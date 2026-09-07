@@ -1,0 +1,4 @@
+src/components/LearningPlanModal.tsx(80,14): error TS2345: Argument of type '{ goal: string; timeframe: string; level: string; strengths: string; obstacles: string; }' is not assignable to parameter of type 'SetStateAction<{ goal: string; timeframe: string; level: string; vocabPerDay: string; grammarPerDay: string; enSkill: string; strengths: string; obstacles: string; }>'.
+  Type '{ goal: string; timeframe: string; level: string; strengths: string; obstacles: string; }' is missing the following properties from type '{ goal: string; timeframe: string; level: string; vocabPerDay: string; grammarPerDay: string; enSkill: string; strengths: string; obstacles: string; }': vocabPerDay, grammarPerDay, enSkill
+src/components/games/WallSmasherGame.tsx(166,78): error TS2304: Cannot find name 'areHomophones'.
+src/components/games/WallSmasherGame.tsx(186,9): error TS2304: Cannot find name 'areHomophones'.

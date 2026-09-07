@@ -1,0 +1,53 @@
+--- server.ts
++++ server.ts
+@@ -443,6 +443,59 @@
+       });
+     }
+   });
++
++  app.post("/api/generate-learning-plan", express.json(), async (req, res) => {
++    try {
++      const { answers, targetLang } = req.body;
++      if (!answers) {
++        return res.status(400).json({ error: "Missing answers" });
++      }
++
++      const prompt = `คุณเป็น AI ผู้เชี่ยวชาญด้านการวางแผนการเรียนภาษา${targetLang === 'CN' ? 'จีน' : targetLang === 'EN' ? 'อังกฤษ' : 'ไทย'}
++ผู้เรียนได้ทำแบบสอบถามดังนี้:
++${answers.map((a: any) => `- ${a.question} ตอบ: ${a.answer}`).join('\n')}
++
++จงสร้างแผนการเรียน 30 วัน ที่เหมาะสมกับผู้ใช้แบบละเอียดมากที่สุด โดยใช้ภาษาไทยและใช้ Markdown ให้สวยงาม
++สิ่งที่คุณต้องมีในแผนการเรียนนี้อย่างครบถ้วน:
++1. **ภาพรวมเป้าหมาย**: สรุปสิ่งที่จะได้เรียนรู้เมื่อจบวันที่ 1, วันที่ 2, จบ 1 สัปดาห์, จบ 2 สัปดาห์, และจบ 1 เดือน
++2. **แผนรายเดือน รายสัปดาห์ และรายวัน**:
++   - **แผนรายสัปดาห์**: เป้าหมายหลักในแต่ละสัปดาห์
++   - **แผนรายวัน (30 วัน)**: สำหรับแต่ละวัน ต้องบอกเลยว่า
++     - **เป้าหมายประจำวัน (Today's Goal)**
++     - **ภารกิจรายวัน (Daily Missions)** ให้ระบุเป็นขั้นตอนที่ 1 ไปจนถึงขั้นตอนสุดท้ายของวัน
++     - **การทบทวน (Review)**: ต้องมีการวางแผนกลับไปทบทวนสิ่งที่เรียนรู้ไปวันก่อนหน้า หรือสัปดาห์ก่อนหน้า เพื่อให้จำได้แม่น
++     - **ผลลัพธ์ของวัน**: บอกเลยว่าทำตามนี้แล้ววันนี้จะได้เรียนรู้อะไร
++
++ข้อกำหนด:
++- จัดรูปแบบด้วย Markdown ใช้หัวข้อ (##, ###), ตัวหนา, และ Bullet points ให้สวยงามและอ่านง่าย
++- ปรับความเข้มข้นให้ตรงกับเวลาเรียนต่อวันและสไตล์ที่ผู้ใช้ระบุ
++`;
++
++      const client = getGeminiClient();
++      const response = await client.models.generateContent({
++        model: "gemini-3.1-pro-preview",
++        contents: prompt
++      });
++
++      const planMarkdown = response.text;
++      if (!planMarkdown) {
++        return res.status(500).json({ error: "Failed to generate plan" });
++      }
++
++      res.json({ plan: planMarkdown });
++    } catch (e: any) {
++      console.error("Learning Plan API Error:", e);
++      res.status(500).json({ error: e.message || "Learning Plan generation failed" });
++    }
++  });
+ 
+   app.post("/api/synthesize", async (req, res) => {

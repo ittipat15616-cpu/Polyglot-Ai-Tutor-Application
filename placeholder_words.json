@@ -1,0 +1,2375 @@
+[
+  {
+    "level": "HSK1",
+    "word": "爸爸|爸",
+    "pinyin": "bà ba | bà",
+    "en": "爸爸|爸",
+    "th": "爸爸|爸"
+  },
+  {
+    "level": "HSK1",
+    "word": "弟弟|弟",
+    "pinyin": "dì di | dì",
+    "en": "弟弟|弟",
+    "th": "弟弟|弟"
+  },
+  {
+    "level": "HSK1",
+    "word": "第（第二）",
+    "pinyin": "dì （ dì èr ）",
+    "en": "第（第二）",
+    "th": "第（第二）"
+  },
+  {
+    "level": "HSK2",
+    "word": "家（科学家）",
+    "pinyin": "jiā （ kē xué jiā ）",
+    "en": "家（科学家）",
+    "th": "家（科学家）"
+  },
+  {
+    "level": "HSK2",
+    "word": "老（老王）",
+    "pinyin": "lǎo （ lǎo wáng ）",
+    "en": "老（老王）",
+    "th": "老（老王）"
+  },
+  {
+    "level": "HSK2",
+    "word": "那时候|那时",
+    "pinyin": "nà shí hòu | nà shí",
+    "en": "那时候|那时",
+    "th": "那时候|那时"
+  },
+  {
+    "level": "HSK2",
+    "word": "头（里头）",
+    "pinyin": "tóu （ lǐ tou ）",
+    "en": "头（里头）",
+    "th": "头（里头）"
+  },
+  {
+    "level": "HSK2",
+    "word": "小（小王）",
+    "pinyin": "xiǎo （ xiǎo wáng ）",
+    "en": "小（小王）",
+    "th": "小（小王）"
+  },
+  {
+    "level": "HSK2",
+    "word": "有（一）点儿",
+    "pinyin": "yǒu （ yī ） diǎn ér",
+    "en": "有（一）点儿",
+    "th": "有（一）点儿"
+  },
+  {
+    "level": "HSK2",
+    "word": "这时候|这时",
+    "pinyin": "zhè shí hòu | zhè shí",
+    "en": "这时候|这时",
+    "th": "这时候|这时"
+  },
+  {
+    "level": "HSK3",
+    "word": "初（初一）",
+    "pinyin": "chū （ chū yī ）",
+    "en": "初（初一）",
+    "th": "初（初一）"
+  },
+  {
+    "level": "HSK3",
+    "word": "化（现代化）",
+    "pinyin": "huà （ xiàn dài huà ）",
+    "en": "化（现代化）",
+    "th": "化（现代化）"
+  },
+  {
+    "level": "HSK3",
+    "word": "…极了",
+    "pinyin": "… jí le",
+    "en": "…极了",
+    "th": "…极了"
+  },
+  {
+    "level": "HSK3",
+    "word": "性（积极性）",
+    "pinyin": "xìng （ jī jí xìng ）",
+    "en": "性（积极性）",
+    "th": "性（积极性）"
+  },
+  {
+    "level": "HSK3",
+    "word": "员（服务员）",
+    "pinyin": "yuán （ fú wù yuán ）",
+    "en": "员（服务员）",
+    "th": "员（服务员）"
+  },
+  {
+    "level": "HSK3",
+    "word": "者（志愿者）",
+    "pinyin": "zhě （ zhì yuàn zhě ）",
+    "en": "者（志愿者）",
+    "th": "者（志愿者）"
+  },
+  {
+    "level": "HSK3",
+    "word": "%",
+    "pinyin": "%",
+    "en": "percent (Tw)",
+    "th": "percent (Tw)"
+  },
+  {
+    "level": "HSK4",
+    "word": "…分之…",
+    "pinyin": "… fēn zhī …",
+    "en": "…分之…",
+    "th": "…分之…"
+  },
+  {
+    "level": "HSK4",
+    "word": "110",
+    "pinyin": "1 1 0",
+    "en": "the emergency number for law enforcement in Mainland China and Taiwan",
+    "th": "the emergency number for law enforcement in Mainland China and Taiwan"
+  },
+  {
+    "level": "HSK4",
+    "word": "119",
+    "pinyin": "1 1 9",
+    "en": "the emergency number for firefighting services in Mainland China",
+    "th": "the emergency number for firefighting services in Mainland China"
+  },
+  {
+    "level": "HSK4",
+    "word": "11区",
+    "pinyin": "1 1 qū",
+    "en": "(ACG) Japan (from the anime \"Code Geass\", in which Japan was renamed Area 11)",
+    "th": "(ACG) Japan (from the anime \"Code Geass\", in which Japan was renamed Area 11)"
+  },
+  {
+    "level": "HSK4",
+    "word": "120",
+    "pinyin": "1 2 0",
+    "en": "the emergency number for medical assistance and first aid in Mainland China",
+    "th": "the emergency number for medical assistance and first aid in Mainland China"
+  },
+  {
+    "level": "HSK5",
+    "word": "差（一）点儿",
+    "pinyin": "chà （ yī ） diǎn ér",
+    "en": "差（一）点儿",
+    "th": "差（一）点儿"
+  },
+  {
+    "level": "HSK5",
+    "word": "品（工艺品）",
+    "pinyin": "pǐn （ gōng yì pǐn ）",
+    "en": "品（工艺品）",
+    "th": "品（工艺品）"
+  },
+  {
+    "level": "HSK5",
+    "word": "2019冠状病毒病",
+    "pinyin": "2 0 1 9 guān zhuàng bìng dú bìng",
+    "en": "COVID-19, the coronavirus disease identified in 2019",
+    "th": "COVID-19, the coronavirus disease identified in 2019"
+  },
+  {
+    "level": "HSK5",
+    "word": "21三体综合症",
+    "pinyin": "2 1 sān tǐ zōng hé zhèng",
+    "en": "trisomy; Down's syndrome",
+    "th": "trisomy; Down's syndrome"
+  },
+  {
+    "level": "HSK6",
+    "word": "好（不）容易",
+    "pinyin": "hǎo （ bù ） róng yì",
+    "en": "好（不）容易",
+    "th": "好（不）容易"
+  },
+  {
+    "level": "HSK6",
+    "word": "界（文艺界）",
+    "pinyin": "jiè （ wén yì jiè ）",
+    "en": "界（文艺界）",
+    "th": "界（文艺界）"
+  },
+  {
+    "level": "HSK6",
+    "word": "力（影响力）",
+    "pinyin": "lì （ yǐng xiǎng lì ）",
+    "en": "力（影响力）",
+    "th": "力（影响力）"
+  },
+  {
+    "level": "HSK6",
+    "word": "长（秘书长）",
+    "pinyin": "cháng （ mì shū cháng ）",
+    "en": "长（秘书长）",
+    "th": "长（秘书长）"
+  },
+  {
+    "level": "HSK6",
+    "word": "族（上班族）",
+    "pinyin": "zú （ shàng bān zú ）",
+    "en": "族（上班族）",
+    "th": "族（上班族）"
+  },
+  {
+    "level": "HSK6",
+    "word": "3C",
+    "pinyin": "3 C",
+    "en": "computers, communications, and consumer electronics; China Compulsory Certificate (CCC)",
+    "th": "computers, communications, and consumer electronics; China Compulsory Certificate (CCC)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "度（知名度）",
+    "pinyin": "dù （ zhī míng dù ）",
+    "en": "度（知名度）",
+    "th": "度（知名度）"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "非（非金属）",
+    "pinyin": "fēi （ fēi jīn shǔ ）",
+    "en": "非（非金属）",
+    "th": "非（非金属）"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "感（责任感）",
+    "pinyin": "gǎn （ zé rèn gǎn ）",
+    "en": "感（责任感）",
+    "th": "感（责任感）"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "率（成功率）",
+    "pinyin": "lǜ （ chéng gōng lǜ ）",
+    "en": "率（成功率）",
+    "th": "率（成功率）"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "茅台（酒）",
+    "pinyin": "máo tái （ jiǔ ）",
+    "en": "茅台（酒）",
+    "th": "茅台（酒）"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "业（服务业）",
+    "pinyin": "yè （ fú wù yè ）",
+    "en": "业（服务业）",
+    "th": "业（服务业）"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "芝士",
+    "pinyin": "zhī shì",
+    "en": "(loanword) cheese",
+    "th": "(loanword) cheese"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "知己",
+    "pinyin": "zhī jǐ",
+    "en": "to know oneself; to be intimate or close; intimate friend",
+    "th": "to know oneself; to be intimate or close; intimate friend"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "知觉",
+    "pinyin": "zhī jué",
+    "en": "perception; consciousness",
+    "th": "perception; consciousness"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "知识分子",
+    "pinyin": "zhī shi fēn zǐ",
+    "en": "variant of 知識分子|知识分子[zhi1 shi5 fen4 zi3]",
+    "th": "variant of 知識分子|知识分子[zhi1 shi5 fen4 zi3]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "知足",
+    "pinyin": "zhī zú",
+    "en": "content with one's situation; to know contentment (hence happiness)",
+    "th": "content with one's situation; to know contentment (hence happiness)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "肢体",
+    "pinyin": "zhī tǐ",
+    "en": "limb; limbs and trunk; body",
+    "th": "limb; limbs and trunk; body"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "脂肪",
+    "pinyin": "zhī fáng",
+    "en": "fat (in the body, in a plant, or in food)",
+    "th": "fat (in the body, in a plant, or in food)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "执法",
+    "pinyin": "zhí fǎ",
+    "en": "to enforce a law; law enforcement",
+    "th": "to enforce a law; law enforcement"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "执意",
+    "pinyin": "zhí yì",
+    "en": "to be determined to; to insist on",
+    "th": "to be determined to; to insist on"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "执照",
+    "pinyin": "zhí zhào",
+    "en": "license; permit",
+    "th": "license; permit"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "执着",
+    "pinyin": "zhí zhuó",
+    "en": "to be strongly attached to; to be dedicated; to cling to; (Buddhism) attachment",
+    "th": "to be strongly attached to; to be dedicated; to cling to; (Buddhism) attachment"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直奔",
+    "pinyin": "zhí bèn",
+    "en": "to go straight to; to make a beeline for",
+    "th": "to go straight to; to make a beeline for"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直达",
+    "pinyin": "zhí dá",
+    "en": "to reach (a place) directly; (transportation) to reach the destination without changing service or without stopping; (of a train, flight etc) direct; nonstop",
+    "th": "to reach (a place) directly; (transportation) to reach the destination without changing service or without stopping; (of a train, flight etc) direct; nonstop"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直观",
+    "pinyin": "zhí guān",
+    "en": "direct observation; directly perceived through the senses; intuitive; audiovisual",
+    "th": "direct observation; directly perceived through the senses; intuitive; audiovisual"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直径",
+    "pinyin": "zhí jìng",
+    "en": "diameter",
+    "th": "diameter"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直觉",
+    "pinyin": "zhí jué",
+    "en": "intuition",
+    "th": "intuition"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直视",
+    "pinyin": "zhí shì",
+    "en": "to look straight at",
+    "th": "to look straight at"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "直至",
+    "pinyin": "zhí zhì",
+    "en": "lasting until; up till (the present)",
+    "th": "lasting until; up till (the present)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "值钱",
+    "pinyin": "zhí qián",
+    "en": "valuable; costly; expensive",
+    "th": "valuable; costly; expensive"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "职权",
+    "pinyin": "zhí quán",
+    "en": "authority; power over others",
+    "th": "authority; power over others"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "职业病",
+    "pinyin": "zhí yè bìng",
+    "en": "occupational disease",
+    "th": "occupational disease"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "职员",
+    "pinyin": "zhí yuán",
+    "en": "office worker; staff member; CL:個|个[ge4],位[wei4]",
+    "th": "office worker; staff member; CL:個|个[ge4],位[wei4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "止步",
+    "pinyin": "zhǐ bù",
+    "en": "to halt; to stop; to go no farther",
+    "th": "to halt; to stop; to go no farther"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "止咳",
+    "pinyin": "zhǐ ké",
+    "en": "to suppress coughing",
+    "th": "to suppress coughing"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "止血",
+    "pinyin": "zhǐ xuè",
+    "en": "to staunch (bleeding); hemostatic (drug)",
+    "th": "to staunch (bleeding); hemostatic (drug)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "旨在",
+    "pinyin": "zhǐ zài",
+    "en": "to have as its purpose; to be intended to; to aim to (do sth)",
+    "th": "to have as its purpose; to be intended to; to aim to (do sth)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指点",
+    "pinyin": "zhǐ diǎn",
+    "en": "to point out; to indicate; to give directions; to show how (to do sth); to censure; to pick at",
+    "th": "to point out; to indicate; to give directions; to show how (to do sth); to censure; to pick at"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指教",
+    "pinyin": "zhǐ jiào",
+    "en": "to give advice or comments",
+    "th": "to give advice or comments"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指令",
+    "pinyin": "zhǐ lìng",
+    "en": "order; command; instruction",
+    "th": "order; command; instruction"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指南",
+    "pinyin": "zhǐ nán",
+    "en": "to guide; guidebook",
+    "th": "to guide; guidebook"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指南针",
+    "pinyin": "zhǐ nán zhēn",
+    "en": "compass",
+    "th": "compass"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指手画脚",
+    "pinyin": "zhǐ shǒu huà jiǎo",
+    "en": "to gesticulate while talking (idiom); to explain by waving one's hands; to criticize or give orders summarily",
+    "th": "to gesticulate while talking (idiom); to explain by waving one's hands; to criticize or give orders summarily"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指望",
+    "pinyin": "zhǐ wàng",
+    "en": "to count on; to hope for; prospect; hope",
+    "th": "to count on; to hope for; prospect; hope"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指向",
+    "pinyin": "zhǐ xiàng",
+    "en": "to point towards; aimed at; facing; the direction indicated",
+    "th": "to point towards; aimed at; facing; the direction indicated"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "指引",
+    "pinyin": "zhǐ yǐn",
+    "en": "to guide; to show; to point (the way); directions; guidance; guidelines",
+    "th": "to guide; to show; to point (the way); directions; guidance; guidelines"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "至此",
+    "pinyin": "zhì cǐ",
+    "en": "up until now; so far",
+    "th": "up until now; so far"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "至关重要",
+    "pinyin": "zhì guān zhòng yào",
+    "en": "extremely important; vital; crucial; essential",
+    "th": "extremely important; vital; crucial; essential"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "志气",
+    "pinyin": "zhì qì",
+    "en": "ambition; resolve; backbone; drive; spirit",
+    "th": "ambition; resolve; backbone; drive; spirit"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "制",
+    "pinyin": "zhì",
+    "en": "system; to control; to regulate; variant of 製|制[zhi4]",
+    "th": "system; to control; to regulate; variant of 製|制[zhi4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "制裁",
+    "pinyin": "zhì cái",
+    "en": "to punish; punishment; sanctions (incl. economic)",
+    "th": "to punish; punishment; sanctions (incl. economic)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "制服",
+    "pinyin": "zhì fú",
+    "en": "to subdue; to check; to bring under control; (in former times) what one is allowed to wear depending on social status; uniform (army, party, school etc); livery (for company employees); CL:套[tao4]",
+    "th": "to subdue; to check; to bring under control; (in former times) what one is allowed to wear depending on social status; uniform (army, party, school etc); livery (for company employees); CL:套[tao4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "制品",
+    "pinyin": "zhì pǐn",
+    "en": "products; goods",
+    "th": "products; goods"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "制止",
+    "pinyin": "zhì zhǐ",
+    "en": "to curb; to put a stop to; to stop; to check; to limit",
+    "th": "to curb; to put a stop to; to stop; to check; to limit"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "质地",
+    "pinyin": "zhì dì",
+    "en": "texture; background (texture); grain; quality; character; disposition",
+    "th": "texture; background (texture); grain; quality; character; disposition"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "质朴",
+    "pinyin": "zhì pǔ",
+    "en": "simple; plain; unadorned; unaffected; unsophisticated; rustic; earthy",
+    "th": "simple; plain; unadorned; unaffected; unsophisticated; rustic; earthy"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "质问",
+    "pinyin": "zhì wèn",
+    "en": "to question; to ask questions; to inquire; to bring to account; to interrogate",
+    "th": "to question; to ask questions; to inquire; to bring to account; to interrogate"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "质疑",
+    "pinyin": "zhì yí",
+    "en": "to call into question; to question (truth or validity)",
+    "th": "to call into question; to question (truth or validity)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "治学",
+    "pinyin": "zhì xué",
+    "en": "scholarship; high-level study; to do scholarly research; to pursue a high level of study",
+    "th": "scholarship; high-level study; to do scholarly research; to pursue a high level of study"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "治愈",
+    "pinyin": "zhì yù",
+    "en": "to cure; to restore to health; uplifting; heartwarming",
+    "th": "to cure; to restore to health; uplifting; heartwarming"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致",
+    "pinyin": "zhì",
+    "en": "(bound form) fine; delicate; exquisite",
+    "th": "(bound form) fine; delicate; exquisite"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致辞",
+    "pinyin": "zhì cí",
+    "en": "to express in words or writing; to make a speech (esp. short introduction, vote of thanks, afterword, funeral homily etc); to address (an audience); same as 致詞|致词",
+    "th": "to express in words or writing; to make a speech (esp. short introduction, vote of thanks, afterword, funeral homily etc); to address (an audience); same as 致詞|致词"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致富",
+    "pinyin": "zhì fù",
+    "en": "to become rich",
+    "th": "to become rich"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致敬",
+    "pinyin": "zhì jìng",
+    "en": "to salute; to pay one's respects to; to pay tribute to; to pay homage to",
+    "th": "to salute; to pay one's respects to; to pay tribute to; to pay homage to"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致力于",
+    "pinyin": "zhì lì yú",
+    "en": "致力于",
+    "th": "致力于"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致命",
+    "pinyin": "zhì mìng",
+    "en": "fatal; mortal; deadly; to sacrifice one's life",
+    "th": "fatal; mortal; deadly; to sacrifice one's life"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "致使",
+    "pinyin": "zhì shǐ",
+    "en": "to cause; to result in",
+    "th": "to cause; to result in"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "秩序",
+    "pinyin": "zhì xù",
+    "en": "order; orderliness (in society, in the classroom, on the roads etc)",
+    "th": "order; orderliness (in society, in the classroom, on the roads etc)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "窒息",
+    "pinyin": "zhì xī",
+    "en": "to choke; to stifle; to suffocate",
+    "th": "to choke; to stifle; to suffocate"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "智商",
+    "pinyin": "zhì shāng",
+    "en": "IQ (intelligence quotient)",
+    "th": "IQ (intelligence quotient)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "滞后",
+    "pinyin": "zhì hòu",
+    "en": "to lag behind",
+    "th": "to lag behind"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "滞留",
+    "pinyin": "zhì liú",
+    "en": "(of a person) to remain in (a place) (due to circumstances that prevent one leaving); to be stranded; (of sth that would typically dissipate, e.g. floodwater, pollutants) to remain; to linger",
+    "th": "(of a person) to remain in (a place) (due to circumstances that prevent one leaving); to be stranded; (of sth that would typically dissipate, e.g. floodwater, pollutants) to remain; to linger"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "置",
+    "pinyin": "zhì",
+    "en": "to install; to place; to put; to buy",
+    "th": "to install; to place; to put; to buy"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中国画",
+    "pinyin": "zhōng guó huà",
+    "en": "Chinese painting",
+    "th": "Chinese painting"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中立",
+    "pinyin": "zhōng lì",
+    "en": "neutral; neutrality",
+    "th": "neutral; neutrality"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中途",
+    "pinyin": "zhōng tú",
+    "en": "midway",
+    "th": "midway"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中型",
+    "pinyin": "zhōng xíng",
+    "en": "medium sized",
+    "th": "medium sized"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中性",
+    "pinyin": "zhōng xìng",
+    "en": "neutral",
+    "th": "neutral"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中旬",
+    "pinyin": "zhōng xún",
+    "en": "middle third of a month",
+    "th": "middle third of a month"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中庸",
+    "pinyin": "zhōng yōng",
+    "en": "the Doctrine of the Mean, one of the Four Books 四書|四书[Si4 shu1]",
+    "th": "the Doctrine of the Mean, one of the Four Books 四書|四书[Si4 shu1]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "中止",
+    "pinyin": "zhōng zhǐ",
+    "en": "to cease; to suspend; to break off; to stop; to discontinue",
+    "th": "to cease; to suspend; to break off; to stop; to discontinue"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "忠诚",
+    "pinyin": "zhōng chéng",
+    "en": "devoted; loyal; fidelity; loyalty",
+    "th": "devoted; loyal; fidelity; loyalty"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "忠实",
+    "pinyin": "zhōng shí",
+    "en": "faithful",
+    "th": "faithful"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "忠于",
+    "pinyin": "zhōng yú",
+    "en": "to be loyal to",
+    "th": "to be loyal to"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "忠贞",
+    "pinyin": "zhōng zhēn",
+    "en": "loyal and dependable",
+    "th": "loyal and dependable"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "终结",
+    "pinyin": "zhōng jié",
+    "en": "end; conclusion; to come to an end; to terminate (sth)",
+    "th": "end; conclusion; to come to an end; to terminate (sth)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "终究",
+    "pinyin": "zhōng jiū",
+    "en": "in the end; after all is said and done",
+    "th": "in the end; after all is said and done"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "终生",
+    "pinyin": "zhōng shēng",
+    "en": "throughout one's life; lifetime; lifelong",
+    "th": "throughout one's life; lifetime; lifelong"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "衷心",
+    "pinyin": "zhōng xīn",
+    "en": "heartfelt; wholehearted; cordial",
+    "th": "heartfelt; wholehearted; cordial"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "肿瘤",
+    "pinyin": "zhǒng liú",
+    "en": "tumor",
+    "th": "tumor"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "种族",
+    "pinyin": "zhǒng zú",
+    "en": "race; ethnic group",
+    "th": "race; ethnic group"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "仲裁",
+    "pinyin": "zhòng cái",
+    "en": "arbitration",
+    "th": "arbitration"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "众人",
+    "pinyin": "zhòng rén",
+    "en": "everyone",
+    "th": "everyone"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "众所周知",
+    "pinyin": "zhòng suǒ zhōu zhī",
+    "en": "(idiom) as everyone knows",
+    "th": "(idiom) as everyone knows"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "众志成城",
+    "pinyin": "zhòng zhì chéng chéng",
+    "en": "unity of will is an impregnable stronghold (idiom)",
+    "th": "unity of will is an impregnable stronghold (idiom)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重创",
+    "pinyin": "zhòng chuāng",
+    "en": "to inflict heavy losses; to inflict serious damage",
+    "th": "to inflict heavy losses; to inflict serious damage"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重量级",
+    "pinyin": "zhòng liàng jí",
+    "en": "(sports) heavyweight class; (fig.) important; major; prominent; influential",
+    "th": "(sports) heavyweight class; (fig.) important; major; prominent; influential"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重任",
+    "pinyin": "zhòng rèn",
+    "en": "heavy responsibility",
+    "th": "heavy responsibility"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重伤",
+    "pinyin": "zhòng shāng",
+    "en": "serious injury; seriously injured",
+    "th": "serious injury; seriously injured"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重心",
+    "pinyin": "zhòng xīn",
+    "en": "center of gravity; central core; main part",
+    "th": "center of gravity; central core; main part"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重型",
+    "pinyin": "zhòng xíng",
+    "en": "heavy; heavy duty; large caliber",
+    "th": "heavy; heavy duty; large caliber"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "重中之重",
+    "pinyin": "zhòng zhōng zhī zhòng",
+    "en": "of the utmost importance; of highest priority",
+    "th": "of the utmost importance; of highest priority"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "周边",
+    "pinyin": "zhōu biān",
+    "en": "periphery; rim; perimeter; surroundings; (computing) (attributive) peripheral; merch (abbr. for 周邊商品|周边商品[zhou1 bian1 shang1 pin3])",
+    "th": "periphery; rim; perimeter; surroundings; (computing) (attributive) peripheral; merch (abbr. for 周邊商品|周边商品[zhou1 bian1 shang1 pin3])"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "周到",
+    "pinyin": "zhōu dào",
+    "en": "thoughtful; considerate; attentive; thorough; also pr. [zhou1 dao5]",
+    "th": "thoughtful; considerate; attentive; thorough; also pr. [zhou1 dao5]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "周密",
+    "pinyin": "zhōu mì",
+    "en": "careful; thorough; meticulous",
+    "th": "careful; thorough; meticulous"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "周旋",
+    "pinyin": "zhōu xuán",
+    "en": "to mix with others; to socialize; to deal with; to contend",
+    "th": "to mix with others; to socialize; to deal with; to contend"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "昼夜",
+    "pinyin": "zhòu yè",
+    "en": "day and night; period of 24 hours; continuously, without stop",
+    "th": "day and night; period of 24 hours; continuously, without stop"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "皱",
+    "pinyin": "zhòu",
+    "en": "to wrinkle; wrinkled; to crease",
+    "th": "to wrinkle; wrinkled; to crease"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "骤然",
+    "pinyin": "zhòu rán",
+    "en": "suddenly; abruptly",
+    "th": "suddenly; abruptly"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "朱红",
+    "pinyin": "zhū hóng",
+    "en": "vermilion",
+    "th": "vermilion"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "株",
+    "pinyin": "zhū",
+    "en": "tree trunk; stump (tree root); a plant; classifier for trees or plants; strain (biology); to involve others (in shady business)",
+    "th": "tree trunk; stump (tree root); a plant; classifier for trees or plants; strain (biology); to involve others (in shady business)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "诸多",
+    "pinyin": "zhū duō",
+    "en": "(used for abstract things) a good deal, a lot of",
+    "th": "(used for abstract things) a good deal, a lot of"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "诸如此类",
+    "pinyin": "zhū rú cǐ lèi",
+    "en": "things like this (idiom); and so on; and the rest; etc",
+    "th": "things like this (idiom); and so on; and the rest; etc"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "竹竿",
+    "pinyin": "zhú gān",
+    "en": "bamboo pole",
+    "th": "bamboo pole"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "逐年",
+    "pinyin": "zhú nián",
+    "en": "year after year; with each passing year; over the years",
+    "th": "year after year; with each passing year; over the years"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主",
+    "pinyin": "zhǔ",
+    "en": "owner; master; host; individual or party concerned; God; Lord; main; to indicate or signify; trump card (in card games)",
+    "th": "owner; master; host; individual or party concerned; God; Lord; main; to indicate or signify; trump card (in card games)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主编",
+    "pinyin": "zhǔ biān",
+    "en": "editor in chief",
+    "th": "editor in chief"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主妇",
+    "pinyin": "zhǔ fù",
+    "en": "housewife; woman of senior authority in a household; the lady of the house; hostess",
+    "th": "housewife; woman of senior authority in a household; the lady of the house; hostess"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主力",
+    "pinyin": "zhǔ lì",
+    "en": "main force; main strength of an army",
+    "th": "main force; main strength of an army"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主权",
+    "pinyin": "zhǔ quán",
+    "en": "sovereignty",
+    "th": "sovereignty"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主人公",
+    "pinyin": "zhǔ rén gōng",
+    "en": "hero (of a novel or film); main protagonist",
+    "th": "hero (of a novel or film); main protagonist"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主食",
+    "pinyin": "zhǔ shí",
+    "en": "staple food",
+    "th": "staple food"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主题歌",
+    "pinyin": "zhǔ tí gē",
+    "en": "theme song",
+    "th": "theme song"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主演",
+    "pinyin": "zhǔ yǎn",
+    "en": "to play the leading role; to star; lead actor",
+    "th": "to play the leading role; to star; lead actor"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主页",
+    "pinyin": "zhǔ yè",
+    "en": "home page",
+    "th": "home page"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主义",
+    "pinyin": "zhǔ yì",
+    "en": "-ism; ideology",
+    "th": "-ism; ideology"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "主宰",
+    "pinyin": "zhǔ zǎi",
+    "en": "to dominate; to rule; to dictate; master",
+    "th": "to dominate; to rule; to dictate; master"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "拄",
+    "pinyin": "zhǔ",
+    "en": "to lean on; to prop on",
+    "th": "to lean on; to prop on"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "嘱咐",
+    "pinyin": "zhǔ fù",
+    "en": "to urge; to exhort",
+    "th": "to urge; to exhort"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "瞩目",
+    "pinyin": "zhǔ mù",
+    "en": "to focus attention upon",
+    "th": "to focus attention upon"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "助威",
+    "pinyin": "zhù wēi",
+    "en": "to cheer for; to encourage; to boost the morale of",
+    "th": "to cheer for; to encourage; to boost the morale of"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "住处",
+    "pinyin": "zhù chù",
+    "en": "residence; dwelling",
+    "th": "residence; dwelling"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "住户",
+    "pinyin": "zhù hù",
+    "en": "household; inhabitant; householder",
+    "th": "household; inhabitant; householder"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "住宿",
+    "pinyin": "zhù sù",
+    "en": "to stay at; lodging; accommodation",
+    "th": "to stay at; lodging; accommodation"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "住址",
+    "pinyin": "zhù zhǐ",
+    "en": "address",
+    "th": "address"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "贮藏",
+    "pinyin": "zhù cáng",
+    "en": "to store up; to hoard; deposits",
+    "th": "to store up; to hoard; deposits"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "注",
+    "pinyin": "zhù",
+    "en": "(bound form) to pour into; to flow into; to inject; (bound form) to focus (one's spirit, gaze etc) on a single point; to concentrate; (bound form) stake (in gambling); classifier for stakes, sums of money, transactions or beams of light; variant of 註|注[zhu4]",
+    "th": "(bound form) to pour into; to flow into; to inject; (bound form) to focus (one's spirit, gaze etc) on a single point; to concentrate; (bound form) stake (in gambling); classifier for stakes, sums of money, transactions or beams of light; variant of 註|注[zhu4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "注定",
+    "pinyin": "zhù dìng",
+    "en": "to foreordain; to be bound to; to be destined to; to be doomed to; inevitably",
+    "th": "to foreordain; to be bound to; to be destined to; to be doomed to; inevitably"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "注入",
+    "pinyin": "zhù rù",
+    "en": "to pour into; to empty into",
+    "th": "to pour into; to empty into"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "铸造",
+    "pinyin": "zhù zào",
+    "en": "to cast (pour metal into a mold)",
+    "th": "to cast (pour metal into a mold)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "筑",
+    "pinyin": "zhù",
+    "en": "short name for Guiyang 貴陽|贵阳[Gui4 yang2]",
+    "th": "short name for Guiyang 貴陽|贵阳[Gui4 yang2]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "爪子",
+    "pinyin": "zhuǎ zi",
+    "en": "(animal's) claw",
+    "th": "(animal's) claw"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "拽",
+    "pinyin": "zhuài",
+    "en": "variant of 曳[ye4]",
+    "th": "variant of 曳[ye4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专长",
+    "pinyin": "zhuān cháng",
+    "en": "specialty; special knowledge or ability",
+    "th": "specialty; special knowledge or ability"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专程",
+    "pinyin": "zhuān chéng",
+    "en": "specifically; specially (for that purpose)",
+    "th": "specifically; specially (for that purpose)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专柜",
+    "pinyin": "zhuān guì",
+    "en": "sales counter dedicated to a certain kind of product (e.g. alcohol)",
+    "th": "sales counter dedicated to a certain kind of product (e.g. alcohol)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专栏",
+    "pinyin": "zhuān lán",
+    "en": "special column",
+    "th": "special column"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专卖店",
+    "pinyin": "zhuān mài diàn",
+    "en": "specialty store",
+    "th": "specialty store"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专人",
+    "pinyin": "zhuān rén",
+    "en": "specialist; person appointed for specific task",
+    "th": "specialist; person appointed for specific task"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专职",
+    "pinyin": "zhuān zhí",
+    "en": "special duty; assigned full time to a task",
+    "th": "special duty; assigned full time to a task"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专制",
+    "pinyin": "zhuān zhì",
+    "en": "autocracy; dictatorship",
+    "th": "autocracy; dictatorship"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专注",
+    "pinyin": "zhuān zhù",
+    "en": "to focus; to concentrate; to give one's full attention",
+    "th": "to focus; to concentrate; to give one's full attention"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "专著",
+    "pinyin": "zhuān zhù",
+    "en": "monograph; specialized text",
+    "th": "monograph; specialized text"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "砖",
+    "pinyin": "zhuān",
+    "en": "variant of 甎|砖[zhuan1]",
+    "th": "variant of 甎|砖[zhuan1]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转播",
+    "pinyin": "zhuǎn bō",
+    "en": "relay; broadcast (on radio or TV)",
+    "th": "relay; broadcast (on radio or TV)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转达",
+    "pinyin": "zhuǎn dá",
+    "en": "to pass on; to convey; to communicate",
+    "th": "to pass on; to convey; to communicate"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转机",
+    "pinyin": "zhuǎn jī",
+    "en": "(to take) a turn for the better; to change planes",
+    "th": "(to take) a turn for the better; to change planes"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转交",
+    "pinyin": "zhuǎn jiāo",
+    "en": "to pass on to sb; to carry and give to sb else",
+    "th": "to pass on to sb; to carry and give to sb else"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转型",
+    "pinyin": "zhuǎn xíng",
+    "en": "to undergo fundamental change; to transition; to transform; to update (to a new model of product)",
+    "th": "to undergo fundamental change; to transition; to transform; to update (to a new model of product)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转学",
+    "pinyin": "zhuǎn xué",
+    "en": "(of a student) to change schools; to transfer from one school to another",
+    "th": "(of a student) to change schools; to transfer from one school to another"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转眼",
+    "pinyin": "zhuǎn yǎn",
+    "en": "in a flash; in the blink of an eye; to glance",
+    "th": "in a flash; in the blink of an eye; to glance"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转载",
+    "pinyin": "zhuǎn zǎi",
+    "en": "to forward (a shipment); to reprint sth published elsewhere; Taiwan pr. [zhuan3 zai4]",
+    "th": "to forward (a shipment); to reprint sth published elsewhere; Taiwan pr. [zhuan3 zai4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转折",
+    "pinyin": "zhuǎn zhé",
+    "en": "shift in the trend of events; turnaround; plot shift in a book; turn in the conversation",
+    "th": "shift in the trend of events; turnaround; plot shift in a book; turn in the conversation"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转折点",
+    "pinyin": "zhuǎn zhé diǎn",
+    "en": "turning point; breaking point",
+    "th": "turning point; breaking point"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "传",
+    "pinyin": "chuán",
+    "en": "to pass on; to spread; to transmit; to infect; to transfer; to circulate; to conduct (electricity)",
+    "th": "to pass on; to spread; to transmit; to infect; to transfer; to circulate; to conduct (electricity)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "传记",
+    "pinyin": "zhuàn jì",
+    "en": "biography; CL:篇[pian1],部[bu4]",
+    "th": "biography; CL:篇[pian1],部[bu4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "转悠",
+    "pinyin": "zhuàn you",
+    "en": "to roll; to wander around; to appear repeatedly",
+    "th": "to roll; to wander around; to appear repeatedly"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "撰写",
+    "pinyin": "zhuàn xiě",
+    "en": "to write; to compose",
+    "th": "to write; to compose"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "庄稼",
+    "pinyin": "zhuāng jia",
+    "en": "farm crop",
+    "th": "farm crop"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "庄严",
+    "pinyin": "zhuāng yán",
+    "en": "solemn; dignified; stately",
+    "th": "solemn; dignified; stately"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "庄园",
+    "pinyin": "zhuāng yuán",
+    "en": "manor; feudal land; villa and park",
+    "th": "manor; feudal land; villa and park"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "桩",
+    "pinyin": "zhuāng",
+    "en": "stump; stake; pile; classifier for events, cases, transactions, affairs etc",
+    "th": "stump; stake; pile; classifier for events, cases, transactions, affairs etc"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "装扮",
+    "pinyin": "zhuāng bàn",
+    "en": "to decorate; to adorn; to dress up; to disguise oneself",
+    "th": "to decorate; to adorn; to dress up; to disguise oneself"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "壮",
+    "pinyin": "zhuàng",
+    "en": "Zhuang ethnic group of Guangxi, the PRC's second most numerous ethnic group",
+    "th": "Zhuang ethnic group of Guangxi, the PRC's second most numerous ethnic group"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "壮大",
+    "pinyin": "zhuàng dà",
+    "en": "to expand; to strengthen",
+    "th": "to expand; to strengthen"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "壮胆",
+    "pinyin": "zhuàng dǎn",
+    "en": "to get one’s courage up; to embolden",
+    "th": "to get one’s courage up; to embolden"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "壮丽",
+    "pinyin": "zhuàng lì",
+    "en": "magnificence; magnificent; majestic; glorious",
+    "th": "magnificence; magnificent; majestic; glorious"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "壮实",
+    "pinyin": "zhuàng shí",
+    "en": "robust; sturdy",
+    "th": "robust; sturdy"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "状元",
+    "pinyin": "zhuàng yuán",
+    "en": "top scorer in the palace examination (highest rank of the Imperial examination system); see 榜眼[bang3 yan3] and 探花[tan4 hua1]; top scorer in college entrance examination 高考[gao1 kao3]; (fig.) the most brilliantly talented person in the field; leading light",
+    "th": "top scorer in the palace examination (highest rank of the Imperial examination system); see 榜眼[bang3 yan3] and 探花[tan4 hua1]; top scorer in college entrance examination 高考[gao1 kao3]; (fig.) the most brilliantly talented person in the field; leading light"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "撞击",
+    "pinyin": "zhuàng jī",
+    "en": "to strike; to hit; to ram",
+    "th": "to strike; to hit; to ram"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "幢",
+    "pinyin": "zhuàng",
+    "en": "banner; pennant (in ancient China)",
+    "th": "banner; pennant (in ancient China)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追悼会",
+    "pinyin": "zhuī dào huì",
+    "en": "memorial service; funeral service",
+    "th": "memorial service; funeral service"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追赶",
+    "pinyin": "zhuī gǎn",
+    "en": "to pursue; to chase after; to accelerate; to catch up with; to overtake",
+    "th": "to pursue; to chase after; to accelerate; to catch up with; to overtake"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追溯",
+    "pinyin": "zhuī sù",
+    "en": "lit. to go upstream; to trace sth back to; to date from",
+    "th": "lit. to go upstream; to trace sth back to; to date from"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追随",
+    "pinyin": "zhuī suí",
+    "en": "to follow; to accompany",
+    "th": "to follow; to accompany"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追尾",
+    "pinyin": "zhuī wěi",
+    "en": "to tailgate; to hit the car in front as a result of tailgating",
+    "th": "to tailgate; to hit the car in front as a result of tailgating"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追问",
+    "pinyin": "zhuī wèn",
+    "en": "to question closely; to investigate in detail; to examine minutely; to get to the heart of the matter",
+    "th": "to question closely; to investigate in detail; to examine minutely; to get to the heart of the matter"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追逐",
+    "pinyin": "zhuī zhú",
+    "en": "to chase; to pursue vigorously",
+    "th": "to chase; to pursue vigorously"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "追踪",
+    "pinyin": "zhuī zōng",
+    "en": "to track; to trace; to follow up; (HK, Tw) to follow (on social media)",
+    "th": "to track; to trace; to follow up; (HK, Tw) to follow (on social media)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "坠",
+    "pinyin": "zhuì",
+    "en": "to fall; to drop; to weigh down",
+    "th": "to fall; to drop; to weigh down"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "准许",
+    "pinyin": "zhǔn xǔ",
+    "en": "to allow; to grant; to permit",
+    "th": "to allow; to grant; to permit"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "准则",
+    "pinyin": "zhǔn zé",
+    "en": "norm; standard; criterion",
+    "th": "norm; standard; criterion"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "拙劣",
+    "pinyin": "zhuō liè",
+    "en": "clumsy; botched",
+    "th": "clumsy; botched"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "捉迷藏",
+    "pinyin": "zhuō mí cáng",
+    "en": "to play hide-and-seek",
+    "th": "to play hide-and-seek"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "灼热",
+    "pinyin": "zhuó rè",
+    "en": "burning hot; scorching",
+    "th": "burning hot; scorching"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "卓越",
+    "pinyin": "zhuó yuè",
+    "en": "outstanding; surpassing; distinguished; splendid",
+    "th": "outstanding; surpassing; distinguished; splendid"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "酌情",
+    "pinyin": "zhuó qíng",
+    "en": "to use discretion; to take circumstances into account; to make allowances pertinent to a situation",
+    "th": "to use discretion; to take circumstances into account; to make allowances pertinent to a situation"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着力",
+    "pinyin": "zhuó lì",
+    "en": "to put effort into sth; to try really hard",
+    "th": "to put effort into sth; to try really hard"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着落",
+    "pinyin": "zhuó luò",
+    "en": "whereabouts; place to settle; reliable source (of funds etc); (of responsibility for a matter) to rest with sb; settlement; solution",
+    "th": "whereabouts; place to settle; reliable source (of funds etc); (of responsibility for a matter) to rest with sb; settlement; solution"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着实",
+    "pinyin": "zhuó shí",
+    "en": "truly; indeed; severely; harshly",
+    "th": "truly; indeed; severely; harshly"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着手",
+    "pinyin": "zhuó shǒu",
+    "en": "to put one's hand to it; to start out on a task; to set out",
+    "th": "to put one's hand to it; to start out on a task; to set out"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着想",
+    "pinyin": "zhuó xiǎng",
+    "en": "to give thought (to others); to consider (other people's needs); also pr. [zhao2 xiang3]",
+    "th": "to give thought (to others); to consider (other people's needs); also pr. [zhao2 xiang3]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着眼",
+    "pinyin": "zhuó yǎn",
+    "en": "to have one's eyes on (a goal); having sth in mind; to concentrate",
+    "th": "to have one's eyes on (a goal); having sth in mind; to concentrate"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着眼于",
+    "pinyin": "zhuó yǎn yú",
+    "en": "着眼于",
+    "th": "着眼于"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "着重",
+    "pinyin": "zhuó zhòng",
+    "en": "to put emphasis on; to stress",
+    "th": "to put emphasis on; to stress"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "姿势",
+    "pinyin": "zī shì",
+    "en": "posture; position",
+    "th": "posture; position"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "姿态",
+    "pinyin": "zī tài",
+    "en": "attitude; posture; stance",
+    "th": "attitude; posture; stance"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "兹",
+    "pinyin": "zī",
+    "en": "used in 龜茲|龟兹[Qiu1 ci2]",
+    "th": "used in 龜茲|龟兹[Qiu1 ci2]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "资本主义",
+    "pinyin": "zī běn zhǔ yì",
+    "en": "capitalism",
+    "th": "capitalism"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "资历",
+    "pinyin": "zī lì",
+    "en": "qualifications; experience; seniority",
+    "th": "qualifications; experience; seniority"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "资深",
+    "pinyin": "zī shēn",
+    "en": "veteran (journalist etc); senior; highly experienced",
+    "th": "veteran (journalist etc); senior; highly experienced"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "资讯",
+    "pinyin": "zī xùn",
+    "en": "information",
+    "th": "information"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "滋润",
+    "pinyin": "zī rùn",
+    "en": "moist; humid; to moisten; to provide moisture; comfortably off",
+    "th": "moist; humid; to moisten; to provide moisture; comfortably off"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "滋味",
+    "pinyin": "zī wèi",
+    "en": "taste; flavor; feeling",
+    "th": "taste; flavor; feeling"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "子弟",
+    "pinyin": "zǐ dì",
+    "en": "child; the younger generation",
+    "th": "child; the younger generation"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "子孙",
+    "pinyin": "zǐ sūn",
+    "en": "offspring; posterity",
+    "th": "offspring; posterity"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自卑",
+    "pinyin": "zì bēi",
+    "en": "to have low self-esteem; to abase oneself",
+    "th": "to have low self-esteem; to abase oneself"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自称",
+    "pinyin": "zì chēng",
+    "en": "to call oneself; to claim to be; to profess; to claim a title",
+    "th": "to call oneself; to claim to be; to profess; to claim a title"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自发",
+    "pinyin": "zì fā",
+    "en": "spontaneous",
+    "th": "spontaneous"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自费",
+    "pinyin": "zì fèi",
+    "en": "at one's own expense; self-funded",
+    "th": "at one's own expense; self-funded"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自负",
+    "pinyin": "zì fù",
+    "en": "conceited; to take responsibility",
+    "th": "conceited; to take responsibility"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自理",
+    "pinyin": "zì lǐ",
+    "en": "to take care of oneself; to provide for oneself",
+    "th": "to take care of oneself; to provide for oneself"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自力更生",
+    "pinyin": "zì lì gēng shēng",
+    "en": "regeneration through one's own effort (idiom); self-reliance",
+    "th": "regeneration through one's own effort (idiom); self-reliance"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自立",
+    "pinyin": "zì lì",
+    "en": "independent; self-reliant; self-sustaining; to stand on one's own feet; to support oneself",
+    "th": "independent; self-reliant; self-sustaining; to stand on one's own feet; to support oneself"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自强不息",
+    "pinyin": "zì qiáng bù xī",
+    "en": "to strive unremittingly; self-improvement",
+    "th": "to strive unremittingly; self-improvement"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自然而然",
+    "pinyin": "zì rán ér rán",
+    "en": "involuntary; automatically",
+    "th": "involuntary; automatically"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自然界",
+    "pinyin": "zì rán jiè",
+    "en": "nature; the natural world",
+    "th": "nature; the natural world"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自如",
+    "pinyin": "zì rú",
+    "en": "unobstructed; unconstrained; smoothly; with ease; freely",
+    "th": "unobstructed; unconstrained; smoothly; with ease; freely"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自始至终",
+    "pinyin": "zì shǐ zhì zhōng",
+    "en": "from start to finish (idiom)",
+    "th": "from start to finish (idiom)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自私",
+    "pinyin": "zì sī",
+    "en": "selfish; selfishness",
+    "th": "selfish; selfishness"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自私自利",
+    "pinyin": "zì sī zì lì",
+    "en": "everything for self and selfish profit (idiom); with no regard for others; selfish; mercenary",
+    "th": "everything for self and selfish profit (idiom); with no regard for others; selfish; mercenary"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自卫",
+    "pinyin": "zì wèi",
+    "en": "to defend oneself; self-defense",
+    "th": "to defend oneself; self-defense"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自相矛盾",
+    "pinyin": "zì xiāng máo dùn",
+    "en": "to contradict oneself; self-contradictory; inconsistent",
+    "th": "to contradict oneself; self-contradictory; inconsistent"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自信心",
+    "pinyin": "zì xìn xīn",
+    "en": "self-confidence",
+    "th": "self-confidence"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自行",
+    "pinyin": "zì xíng",
+    "en": "voluntary; autonomous; by oneself; self-",
+    "th": "voluntary; autonomous; by oneself; self-"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自以为是",
+    "pinyin": "zì yǐ wéi shì",
+    "en": "to believe oneself infallible (idiom); to be opinionated",
+    "th": "to believe oneself infallible (idiom); to be opinionated"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自由自在",
+    "pinyin": "zì yóu zì zài",
+    "en": "free and easy (idiom); carefree; leisurely",
+    "th": "free and easy (idiom); carefree; leisurely"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自责",
+    "pinyin": "zì zé",
+    "en": "to blame oneself",
+    "th": "to blame oneself"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自助",
+    "pinyin": "zì zhù",
+    "en": "self-service",
+    "th": "self-service"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自尊",
+    "pinyin": "zì zūn",
+    "en": "self-respect; self-esteem; ego; pride",
+    "th": "self-respect; self-esteem; ego; pride"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "自尊心",
+    "pinyin": "zì zūn xīn",
+    "en": "self-respect; self-esteem; ego",
+    "th": "self-respect; self-esteem; ego"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "字迹",
+    "pinyin": "zì jì",
+    "en": "handwriting",
+    "th": "handwriting"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "字幕",
+    "pinyin": "zì mù",
+    "en": "subtitles; captions (of a movie etc)",
+    "th": "subtitles; captions (of a movie etc)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "字体",
+    "pinyin": "zì tǐ",
+    "en": "calligraphic style; typeface; font",
+    "th": "calligraphic style; typeface; font"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "字眼",
+    "pinyin": "zì yǎn",
+    "en": "wording",
+    "th": "wording"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "宗",
+    "pinyin": "zōng",
+    "en": "surname Zong",
+    "th": "surname Zong"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "宗旨",
+    "pinyin": "zōng zhǐ",
+    "en": "objective; aim; goal",
+    "th": "objective; aim; goal"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "综上所述",
+    "pinyin": "zōng shàng suǒ shù",
+    "en": "to summarize; to sum up",
+    "th": "to summarize; to sum up"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "总的来说",
+    "pinyin": "zǒng de lái shuō",
+    "en": "generally speaking; to sum up; in summary; in short",
+    "th": "generally speaking; to sum up; in summary; in short"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "总额",
+    "pinyin": "zǒng é",
+    "en": "total (amount or value)",
+    "th": "total (amount or value)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "总而言之",
+    "pinyin": "zǒng ér yán zhī",
+    "en": "in short; in a word; in brief",
+    "th": "in short; in a word; in brief"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "总计",
+    "pinyin": "zǒng jì",
+    "en": "(grand) total",
+    "th": "(grand) total"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "纵观",
+    "pinyin": "zòng guān",
+    "en": "to survey comprehensively; an overall survey",
+    "th": "to survey comprehensively; an overall survey"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "纵横交错",
+    "pinyin": "zòng héng jiāo cuò",
+    "en": "criss-crossed (idiom)",
+    "th": "criss-crossed (idiom)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "纵然",
+    "pinyin": "zòng rán",
+    "en": "even if; even though",
+    "th": "even if; even though"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "纵容",
+    "pinyin": "zòng róng",
+    "en": "to indulge; to connive at",
+    "th": "to indulge; to connive at"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "纵深",
+    "pinyin": "zòng shēn",
+    "en": "depth (from front to rear); depth (into a territory); span (of time); (fig.) depth (of deployment, progress, development etc)",
+    "th": "depth (from front to rear); depth (into a territory); span (of time); (fig.) depth (of deployment, progress, development etc)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "粽子",
+    "pinyin": "zòng zǐ",
+    "en": "glutinous rice and choice of filling wrapped in leaves and steamed or boiled",
+    "th": "glutinous rice and choice of filling wrapped in leaves and steamed or boiled"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "走过场",
+    "pinyin": "zǒu guò chǎng",
+    "en": "to go through the motions",
+    "th": "to go through the motions"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "走后门",
+    "pinyin": "zǒu hòu mén",
+    "en": "(lit.) to enter through the back door; (fig.) to pull strings; to use connections; (fig.) (slang) to have anal sex",
+    "th": "(lit.) to enter through the back door; (fig.) to pull strings; to use connections; (fig.) (slang) to have anal sex"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "走近",
+    "pinyin": "zǒu jìn",
+    "en": "to approach; to draw near to",
+    "th": "to approach; to draw near to"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "走廊",
+    "pinyin": "zǒu láng",
+    "en": "corridor; aisle; hallway; passageway; veranda",
+    "th": "corridor; aisle; hallway; passageway; veranda"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "走投无路",
+    "pinyin": "zǒu tóu wú lù",
+    "en": "to be at an impasse (idiom); in a tight spot; at the end of one's rope; desperate",
+    "th": "to be at an impasse (idiom); in a tight spot; at the end of one's rope; desperate"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "走弯路",
+    "pinyin": "zǒu wān lù",
+    "en": "to take an indirect route; to waste one's time by using an inappropriate method",
+    "th": "to take an indirect route; to waste one's time by using an inappropriate method"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "奏效",
+    "pinyin": "zòu xiào",
+    "en": "to show results; to be effective",
+    "th": "to show results; to be effective"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "揍",
+    "pinyin": "zòu",
+    "en": "to hit; to beat (sb); (coll.) to smash (sth)",
+    "th": "to hit; to beat (sb); (coll.) to smash (sth)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "租赁",
+    "pinyin": "zū lìn",
+    "en": "to rent; to lease; to hire",
+    "th": "to rent; to lease; to hire"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "足迹",
+    "pinyin": "zú jì",
+    "en": "footprint; track; spoor",
+    "th": "footprint; track; spoor"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "足智多谋",
+    "pinyin": "zú zhì duō móu",
+    "en": "resourceful; full of stratagems",
+    "th": "resourceful; full of stratagems"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "阻挡",
+    "pinyin": "zǔ dǎng",
+    "en": "to stop; to resist; to obstruct",
+    "th": "to stop; to resist; to obstruct"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "阻拦",
+    "pinyin": "zǔ lán",
+    "en": "to stop; to obstruct",
+    "th": "to stop; to obstruct"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "阻力",
+    "pinyin": "zǔ lì",
+    "en": "resistance; drag",
+    "th": "resistance; drag"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "阻挠",
+    "pinyin": "zǔ náo",
+    "en": "to thwart; to obstruct (sth)",
+    "th": "to thwart; to obstruct (sth)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "组建",
+    "pinyin": "zǔ jiàn",
+    "en": "to organize; to set up; to establish",
+    "th": "to organize; to set up; to establish"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "组装",
+    "pinyin": "zǔ zhuāng",
+    "en": "to assemble; to put together",
+    "th": "to assemble; to put together"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "祖传",
+    "pinyin": "zǔ chuán",
+    "en": "passed on from ancestors; handed down from generation to generation",
+    "th": "passed on from ancestors; handed down from generation to generation"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "祖籍",
+    "pinyin": "zǔ jí",
+    "en": "ancestral hometown; original domicile (and civil registration)",
+    "th": "ancestral hometown; original domicile (and civil registration)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "祖先",
+    "pinyin": "zǔ xiān",
+    "en": "ancestors; forebears; (biology) ancestral species; ancient species from which present-day species evolved",
+    "th": "ancestors; forebears; (biology) ancestral species; ancient species from which present-day species evolved"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "祖宗",
+    "pinyin": "zǔ zōng",
+    "en": "ancestor; forebear",
+    "th": "ancestor; forebear"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "钻空子",
+    "pinyin": "zuàn kòng zi",
+    "en": "to take advantage of a loophole; to exploit an advantage; to seize the opportunity (esp. to do sth bad)",
+    "th": "to take advantage of a loophole; to exploit an advantage; to seize the opportunity (esp. to do sth bad)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "钻研",
+    "pinyin": "zuān yán",
+    "en": "to study meticulously; to delve into",
+    "th": "to study meticulously; to delve into"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "钻石",
+    "pinyin": "zuàn shí",
+    "en": "diamond; CL:顆|颗[ke1]",
+    "th": "diamond; CL:顆|颗[ke1]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "嘴唇",
+    "pinyin": "zuǐ chún",
+    "en": "lip; CL:片[pian4]",
+    "th": "lip; CL:片[pian4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "罪犯",
+    "pinyin": "zuì fàn",
+    "en": "criminal",
+    "th": "criminal"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "罪魁祸首",
+    "pinyin": "zuì kuí huò shǒu",
+    "en": "(idiom) criminal ringleader; main offender; main culprit; main cause of a disaster",
+    "th": "(idiom) criminal ringleader; main offender; main culprit; main cause of a disaster"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "尊贵",
+    "pinyin": "zūn guì",
+    "en": "respected; respectable; honorable",
+    "th": "respected; respectable; honorable"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "尊严",
+    "pinyin": "zūn yán",
+    "en": "dignity; sanctity; honor; majesty",
+    "th": "dignity; sanctity; honor; majesty"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "遵循",
+    "pinyin": "zūn xún",
+    "en": "to follow; to abide by; to comply with",
+    "th": "to follow; to abide by; to comply with"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "遵照",
+    "pinyin": "zūn zhào",
+    "en": "in accordance with; to follow (the rules)",
+    "th": "in accordance with; to follow (the rules)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "琢磨",
+    "pinyin": "zhuó mó",
+    "en": "to carve and polish (jade); to polish and refine a literary work",
+    "th": "to carve and polish (jade); to polish and refine a literary work"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "左顾右盼",
+    "pinyin": "zuǒ gù yòu pàn",
+    "en": "glancing to left and right (idiom); to look all around",
+    "th": "glancing to left and right (idiom); to look all around"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "佐料",
+    "pinyin": "zuǒ liào",
+    "en": "condiments; seasoning",
+    "th": "condiments; seasoning"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "作弊",
+    "pinyin": "zuò bì",
+    "en": "to practice fraud; to cheat; to engage in corrupt practices",
+    "th": "to practice fraud; to cheat; to engage in corrupt practices"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "作对",
+    "pinyin": "zuò duì",
+    "en": "to set oneself against; to oppose; to make a pair",
+    "th": "to set oneself against; to oppose; to make a pair"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "作风",
+    "pinyin": "zuò fēng",
+    "en": "style; style of work; way",
+    "th": "style; style of work; way"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "作客",
+    "pinyin": "zuò kè",
+    "en": "to live somewhere as a visitor; to stay with sb as a guest; to sojourn",
+    "th": "to live somewhere as a visitor; to stay with sb as a guest; to sojourn"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "作物",
+    "pinyin": "zuò wù",
+    "en": "crop",
+    "th": "crop"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "坐落",
+    "pinyin": "zuò luò",
+    "en": "to be situated; to be located (of a building)",
+    "th": "to be situated; to be located (of a building)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "座谈",
+    "pinyin": "zuò tán",
+    "en": "to have an informal discussion; CL:次[ci4],個|个[ge4]",
+    "th": "to have an informal discussion; CL:次[ci4],個|个[ge4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "座右铭",
+    "pinyin": "zuò yòu míng",
+    "en": "motto; maxim",
+    "th": "motto; maxim"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "做生意",
+    "pinyin": "zuò shēng yì",
+    "en": "to do business",
+    "th": "to do business"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "做证",
+    "pinyin": "zuò zhèng",
+    "en": "variant of 作證|作证[zuo4 zheng4]",
+    "th": "variant of 作證|作证[zuo4 zheng4]"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "3D打印",
+    "pinyin": "3 D dǎ yìn",
+    "en": "to 3D print; 3D printing",
+    "th": "to 3D print; 3D printing"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "3P",
+    "pinyin": "3 P",
+    "en": "(slang) threesome",
+    "th": "(slang) threesome"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "3Q",
+    "pinyin": "3 Q",
+    "en": "(Internet slang) thank you (loanword)",
+    "th": "(Internet slang) thank you (loanword)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "421",
+    "pinyin": "4 2 1",
+    "en": "four grandparents, two parents and an only child",
+    "th": "four grandparents, two parents and an only child"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "4S店",
+    "pinyin": "4 S diàn",
+    "en": "authorized full-service car dealership (offering sales, spare parts, after-sales service and customer support)",
+    "th": "authorized full-service car dealership (offering sales, spare parts, after-sales service and customer support)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "502胶",
+    "pinyin": "5 0 2 jiāo",
+    "en": "cyanoacrylate glue",
+    "th": "cyanoacrylate glue"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "88",
+    "pinyin": "8 8",
+    "en": "(Internet slang) bye-bye (alternative for 拜拜[bai2 bai2])",
+    "th": "(Internet slang) bye-bye (alternative for 拜拜[bai2 bai2])"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "95后",
+    "pinyin": "9 5 hòu",
+    "en": "people born between 1995-01-01 and 1999-12-31; Gen Z (abbr. for 95後|95后[jiu3 wu3 hou4] + 00後|00后[ling2 ling2 hou4])",
+    "th": "people born between 1995-01-01 and 1999-12-31; Gen Z (abbr. for 95後|95后[jiu3 wu3 hou4] + 00後|00后[ling2 ling2 hou4])"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "996",
+    "pinyin": "9 9 6",
+    "en": "9am–9pm, six days a week (work schedule)",
+    "th": "9am–9pm, six days a week (work schedule)"
+  },
+  {
+    "level": "HSK7-9",
+    "word": "A",
+    "pinyin": "A",
+    "en": "(slang) (Tw) to steal",
+    "th": "(slang) (Tw) to steal"
+  }
+]

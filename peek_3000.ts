@@ -1,0 +1,3 @@
+import { hsk7to9Data } from './src/data/hsk7to9Data';
+console.log(hsk7to9Data[3000]);
+console.log(hsk7to9Data[4000]);

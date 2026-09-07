@@ -1,0 +1,11 @@
+{
+  "name": "Polyglot AI Tutor",
+  "description": "An interactive AI-powered language learning application providing personalized tutoring and cloud-integrated educational resources.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,482 @@
+[
+  {
+    "id": "ielts_read_01",
+    "title": "IELTS Academic Reading: The Future of Renewable Energy",
+    "type": "IELTS",
+    "skill": "Reading",
+    "content": "Renewable energy technologies are rapidly becoming the most cost-effective source of new power generation across the globe. Driven by continuous technological advancements and economies of scale, the cost of solar photovoltaic (PV) modules and wind turbines has plummeted over the past decade.\n\nHowever, the transition to a fully renewable energy grid is not without significant challenges. One of the primary obstacles is the intermittent nature of solar and wind energy. Unlike traditional fossil fuel power plants, which can operate continuously, solar panels only generate electricity during daylight hours, and wind turbines require sufficient wind speeds.\n\nTo address this intermittency, massive investments in grid-scale energy storage solutions, such as lithium-ion batteries and pumped hydro storage, are urgently required. Furthermore, modernizing the existing electrical grid infrastructure to handle distributed and variable energy sources is a critical step that many developed nations are struggling to finance.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "According to the passage, what is a major reason for the decreasing cost of renewable energy?",
+        "options": [
+          "Decreased demand for fossil fuels",
+          "Government subsidies in developing nations",
+          "Continuous technological advancements and economies of scale",
+          "The invention of new types of lithium-ion batteries"
+        ],
+        "answer": 2,
+        "explanation": "ย่อหน้าที่ 1 ระบุชัดเจนว่า 'Driven by continuous technological advancements and economies of scale' (ขับเคลื่อนด้วยความก้าวหน้าทางเทคโนโลยีอย่างต่อเนื่องและการประหยัดต่อขนาด)"
+      },
+      {
+        "id": "q2",
+        "question": "What is identified as the primary obstacle to a fully renewable energy grid?",
+        "options": [
+          "The high initial cost of solar panels",
+          "The intermittent nature of solar and wind energy",
+          "A lack of public support for renewable energy",
+          "The difficulty of mining materials for batteries"
+        ],
+        "answer": 1,
+        "explanation": "ย่อหน้าที่ 2 ระบุว่า 'One of the primary obstacles is the intermittent nature of solar and wind energy.' (หนึ่งในอุปสรรคหลักคือความไม่สม่ำเสมอของพลังงานแสงอาทิตย์และลม)"
+      },
+      {
+        "id": "q3",
+        "question": "Which of the following is mentioned as a solution to address the intermittency of renewable energy?",
+        "options": [
+          "Building more fossil fuel power plants as a backup",
+          "Grid-scale energy storage solutions like lithium-ion batteries",
+          "Restricting energy usage during nighttime",
+          "Relocating wind turbines to offshore locations"
+        ],
+        "answer": 1,
+        "explanation": "ย่อหน้าที่ 3 ระบุว่า 'To address this intermittency, massive investments in grid-scale energy storage solutions, such as lithium-ion batteries... are urgently required.'"
+      }
+    ]
+  },
+  {
+    "id": "toefl_read_01",
+    "title": "TOEFL Reading: The Migration of the Monarch Butterfly",
+    "type": "TOEFL",
+    "skill": "Reading",
+    "content": "The monarch butterfly is renowned for its spectacular annual migration, one of the most remarkable natural phenomena in the insect world. Each autumn, millions of monarch butterflies from across North America embark on a journey spanning thousands of miles to reach their overwintering grounds in central Mexico.\n\nWhat makes this migration truly extraordinary is that the butterflies making the journey have never been to Mexico before. The migration spans multiple generations. The butterflies that return to North America in the spring are the great-grandchildren of those that left the previous autumn. Scientists believe they use a combination of the sun's position and the Earth's magnetic field to navigate.\n\nHowever, this incredible migration is under severe threat. Habitat loss in both their breeding grounds (due to the eradication of milkweed, the sole food source for monarch caterpillars) and their wintering grounds in Mexico has led to a drastic decline in their population.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "The word 'phenomena' in paragraph 1 is closest in meaning to:",
+        "options": [
+          "occurrences",
+          "problems",
+          "destinations",
+          "species"
+        ],
+        "answer": 0,
+        "explanation": "Phenomena แปลว่า 'ปรากฏการณ์' (occurrences) ในบริบทนี้พูดถึงปรากฏการณ์ทางธรรมชาติ"
+      },
+      {
+        "id": "q2",
+        "question": "Why is the monarch butterfly's migration described as 'extraordinary'?",
+        "options": [
+          "Because they fly faster than any other insect.",
+          "Because the migrating butterflies have never been to the destination before.",
+          "Because they survive entirely without eating during the journey.",
+          "Because they only migrate once every ten years."
+        ],
+        "answer": 1,
+        "explanation": "ย่อหน้าที่ 2 อธิบายว่าความน่าทึ่งคือ 'the butterflies making the journey have never been to Mexico before' (ผีเสื้อที่เดินทางไม่เคยไปเม็กซิโกมาก่อนเลย)"
+      },
+      {
+        "id": "q3",
+        "question": "According to the passage, what is causing the decline in the monarch butterfly population?",
+        "options": [
+          "Climate change affecting the sun's position",
+          "Predators in their Mexican wintering grounds",
+          "A disease affecting the milkweed plants",
+          "Habitat loss in both breeding and wintering grounds"
+        ],
+        "answer": 3,
+        "explanation": "ย่อหน้าที่ 3 ระบุว่า 'Habitat loss in both their breeding grounds... and their wintering grounds in Mexico has led to a drastic decline in their population.'"
+      }
+    ]
+  },
+  {
+    "id": "hsk4_read_01",
+    "title": "HSK4 閱讀理解：买衣服的经验 (Buying Clothes)",
+    "type": "HSK",
+    "skill": "Reading",
+    "content": "很多人喜欢在网上买衣服，因为网上的衣服不但便宜，而且款式很多。但是，在网上买衣服也有不好的地方。第一，你不能试穿，所以不知道大小合适不合适。第二，有时候照片上的颜色和实际的颜色不一样。\n\n我上个星期在网上买了一件红色的毛衣。昨天收到了，可是我发现颜色太深了，跟照片上的完全不一样，而且我穿上去有点儿大。我只好把它退了。\n\n现在我觉得，如果是买衣服，最好还是去商场买。虽然价格可能会贵一点儿，但是你可以试穿，能看出颜色和质量到底怎么样。这样就不容易买错，也不用麻烦去退货。",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "作者认为在网上买衣服有什么好处？ (What does the author think is the advantage of buying clothes online?)",
+        "options": [
+          "质量很好 (Good quality)",
+          "便宜而且款式多 (Cheap and many styles)",
+          "可以免费退货 (Free return)",
+          "颜色很漂亮 (Beautiful colors)"
+        ],
+        "answer": 1,
+        "explanation": "在第一段 (ย่อหน้าแรก) ผู้เขียนบอกว่า '因为网上的衣服不但便宜，而且款式很多' (เพราะเสื้อผ้าออนไลน์ไม่เพียงแต่ราคาถูก แต่ยังมีรูปแบบให้เลือกมากมาย)"
+      },
+      {
+        "id": "q2",
+        "question": "作者上个星期买的毛衣怎么了？ (What happened to the sweater the author bought last week?)",
+        "options": [
+          "太小了，穿不下 (Too small, cannot wear)",
+          "颜色太深，而且有点儿大 (Color too dark, and a bit big)",
+          "质量不好，破了 (Bad quality, broken)",
+          "送给朋友了 (Given to a friend)"
+        ],
+        "answer": 1,
+        "explanation": "在第二段 (ย่อหน้าที่สอง) ระบุว่า '颜色太深了... 而且我穿上去有点儿大' (สีเข้มเกินไป... และฉันใส่แล้วมันหลวมไปหน่อย)"
+      },
+      {
+        "id": "q3",
+        "question": "根据这段话，作者现在更喜欢去哪里买衣服？ (According to the passage, where does the author prefer to buy clothes now?)",
+        "options": [
+          "在网上买 (Online)",
+          "让朋友帮忙买 (Ask friends to buy)",
+          "去商场买 (At the shopping mall)",
+          "去超市买 (At the supermarket)"
+        ],
+        "answer": 2,
+        "explanation": "在最后一段 (ย่อหน้าสุดท้าย) ผู้เขียนสรุปว่า '现在我觉得，如果是买衣服，最好还是去商场买。' (ตอนนี้ฉันคิดว่า ถ้าจะซื้อเสื้อผ้า ทางที่ดีที่สุดคือไปซื้อที่ห้างสรรพสินค้า)"
+      }
+    ]
+  },
+  {
+    "id": "ielts_reading_tech_society_001",
+    "title": "IELTS Academic Reading: Technology and Society",
+    "type": "IELTS",
+    "skill": "Reading",
+    "content": "The rapid advancement of technology in recent decades has profoundly reshaped societies across the globe, bringing forth both unprecedented opportunities and complex challenges. From the ubiquitous presence of smartphones to the intricate algorithms driving artificial intelligence, technology has become an inextricable part of daily life, influencing communication, commerce, education, and even governance.\n\nOne of the most significant impacts has been on communication. Social media platforms and instant messaging applications have facilitated global connectivity, enabling individuals to maintain relationships across vast distances and fostering a sense of interconnectedness. However, this digital tether also raises concerns about privacy, the spread of misinformation, and the potential for increased social isolation in the face of constant digital interaction. The paradox of being 'connected yet alone' is a growing area of sociological inquiry.\n\nEconomically, technology has been a double-edged sword. Automation and AI-driven processes have boosted productivity and efficiency in many industries, leading to economic growth and the creation of new high-tech jobs. Yet, these advancements also pose a threat to traditional employment sectors, potentially displacing workers whose skills become obsolete. The debate over Universal Basic Income (UBI) as a response to this potential job displacement highlights the ethical and economic dilemmas societies face.\n\nIn education, technology has democratized access to information and learning resources. Online courses, virtual classrooms, and educational apps have made knowledge more accessible than ever before, potentially bridging the gap for learners in remote areas or those with limited traditional schooling opportunities. Nevertheless, concerns persist regarding the digital divide, ensuring equitable access to technology and the skills required to utilize it effectively. Moreover, the reliance on digital tools necessitates a re-evaluation of pedagogical methods to foster critical thinking rather than mere information consumption.\n\nUltimately, the trajectory of technology's influence on society is not predetermined. It is a product of human choices, policies, and ethical considerations. While technology offers powerful tools for progress, its benefits can only be fully realized if societies proactively address the associated challenges, ensuring that technological development serves the broader goals of equity, well-being, and sustainable human flourishing.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "Which of the following best summarizes the main idea of the passage?",
+        "options": [
+          "Technology has primarily led to social isolation and job displacement.",
+          "The economic benefits of technology far outweigh its social drawbacks.",
+          "Technology has brought both significant opportunities and complex challenges that societies must address.",
+          "The main impact of technology has been on communication and education, making them more accessible."
+        ],
+        "answer": 2,
+        "explanation": "เนื้อเรื่องกล่าวถึงทั้งด้านดี (โอกาส) และด้านเสีย (ความท้าทาย) ของเทคโนโลยีในหลายมิติ (การสื่อสาร เศรษฐกิจ การศึกษา) และเน้นย้ำว่าสังคมต้องจัดการกับความท้าทายเหล่านี้ ตัวเลือกนี้สรุปใจความสำคัญได้ครอบคลุมที่สุด"
+      },
+      {
+        "id": "q2",
+        "question": "According to the passage, what is a paradox related to digital communication?",
+        "options": [
+          "People are communicating more but understanding each other less.",
+          "Individuals are more connected globally but may experience increased social isolation.",
+          "Social media platforms are free but require significant personal data.",
+          "Instant messaging is fast but often leads to misunderstandings."
+        ],
+        "answer": 1,
+        "explanation": "ในย่อหน้า 2 กล่าวถึง \"The paradox of being 'connected yet alone' is a growing area of sociological inquiry.\" ซึ่งหมายถึงการเชื่อมต่อกันทั่วโลกแต่กลับรู้สึกโดดเดี่ยวมากขึ้น"
+      },
+      {
+        "id": "q3",
+        "question": "What is presented as a potential societal response to job displacement caused by automation?",
+        "options": [
+          "Investing heavily in traditional employment sectors.",
+          "Implementing stricter regulations on AI development.",
+          "Exploring the concept of Universal Basic Income (UBI).",
+          "Encouraging more individuals to pursue high-tech jobs."
+        ],
+        "answer": 2,
+        "explanation": "ย่อหน้า 3 ระบุว่า \"The debate over Universal Basic Income (UBI) as a response to this potential job displacement highlights the ethical and economic dilemmas societies face.\" ซึ่งเป็นแนวคิดที่ถูกเสนอเพื่อตอบสนองต่อการว่างงานที่อาจเกิดขึ้น"
+      },
+      {
+        "id": "q4",
+        "question": "Which of the following is NOT mentioned as a concern regarding technology in education?",
+        "options": [
+          "The digital divide.",
+          "Ensuring equitable access to technology.",
+          "The need to re-evaluate pedagogical methods.",
+          "Increased costs for educational institutions."
+        ],
+        "answer": 3,
+        "explanation": "ย่อหน้า 4 กล่าวถึง \"digital divide\", \"equitable access to technology\", และ \"re-evaluation of pedagogical methods\" เป็นความกังวล แต่ไม่ได้กล่าวถึง \"increased costs for educational institutions\""
+      },
+      {
+        "id": "q5",
+        "question": "What is the author's ultimate perspective on the trajectory of technology's influence?",
+        "options": [
+          "It is primarily negative and irreversible.",
+          "It is entirely positive and will solve most societal problems.",
+          "It is predetermined and beyond human control.",
+          "It is shaped by human choices and requires proactive management."
+        ],
+        "answer": 3,
+        "explanation": "ย่อหน้าสุดท้ายระบุชัดเจนว่า \"Ultimately, the trajectory of technology's influence on society is not predetermined. It is a product of human choices, policies, and ethical considerations.\" และ \"its benefits can only be fully realized if societies proactively address the associated challenges.\" แสดงว่าผู้เขียนมองว่าอนาคตขึ้นอยู่กับการตัดสินใจและการจัดการของมนุษย์"
+      }
+    ]
+  },
+  {
+    "id": "ielts_reading_1783559922",
+    "title": "IELTS Academic Reading: Environmental Conservation",
+    "type": "IELTS",
+    "skill": "Reading",
+    "content": "The escalating crisis of environmental degradation has firmly placed environmental conservation at the forefront of global discourse. Once viewed as a peripheral concern, the protection and sustainable management of natural resources are now understood as fundamental to human well-being and economic stability. From pristine rainforests to the depths of the ocean, ecosystems worldwide face unprecedented threats, demanding urgent and concerted action. The urgency stems not merely from an ethical obligation to preserve nature, but from a pragmatic recognition of humanity's dependence on healthy ecosystems for vital services such as clean air and water, fertile soil, and climate regulation.\n\nOne of the most pressing dimensions of this crisis is the alarming rate of biodiversity loss. Scientists estimate that species are disappearing at a rate hundreds to thousands of times higher than the natural background extinction rate. This loss is primarily driven by human activities, including habitat destruction through deforestation and urban sprawl, pollution of air and water, overexploitation of natural resources, and the pervasive impacts of climate change. The decline of biodiversity weakens ecosystem resilience, making them more vulnerable to disturbances and less able to provide essential services. For instance, the disappearance of pollinators threatens global food security, while the degradation of wetlands exacerbates flood risks.\n\nEffective conservation strategies are diverse and multifaceted. They range from establishing and managing protected areas, such as national parks and wildlife reserves, to implementing species-specific recovery programs for endangered animals and plants. Beyond direct protection, sustainable resource management is crucial, advocating for practices in agriculture, forestry, and fisheries that minimize environmental impact and ensure long-term viability. Ecotourism, when managed responsibly, can also provide economic incentives for conservation by demonstrating the tangible value of intact natural environments to local communities.\n\nHowever, conservation efforts often face significant challenges, including inadequate funding, conflicting land-use interests, and insufficient political will. Addressing these requires a multi-scalar approach involving international cooperation, national policy frameworks, and grassroots community engagement. International agreements like the Convention on Biological Diversity (CBD) aim to set global targets and facilitate collaborative action. At the national level, robust environmental laws and enforcement mechanisms are vital. Crucially, empowering local communities and indigenous peoples, who often possess invaluable traditional ecological knowledge, is paramount for successful on-the-ground conservation initiatives, as their livelihoods are intimately linked to the health of their local environments.\n\nLooking ahead, the paradigm of environmental conservation is evolving from a reactive approach, primarily focused on 'protecting' what remains, to a more proactive and holistic strategy of 'restoring' degraded ecosystems and integrating conservation principles into all aspects of human development. This shift acknowledges that merely setting aside protected areas is insufficient; instead, it calls for a fundamental reconsideration of our relationship with the natural world, fostering a culture of stewardship that recognizes the intrinsic value of nature and humanity's role as responsible custodians of the planet. The future of environmental conservation hinges on innovation, education, and a collective commitment to build a sustainable future where both human society and natural ecosystems can thrive.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "What is the main purpose of the passage?",
+        "options": [
+          "To highlight the economic benefits of ecotourism.",
+          "To describe the various types of endangered species worldwide.",
+          "To discuss the urgency, challenges, and evolving strategies of environmental conservation.",
+          "To criticize international agreements for their inadequacy in addressing environmental issues."
+        ],
+        "answer": 2,
+        "explanation": "เนื้อเรื่องโดยรวมกล่าวถึงความเร่งด่วนของปัญหาสิ่งแวดล้อม ความท้าทายที่เผชิญอยู่ และแนวทางปฏิบัติที่พัฒนาไปในการอนุรักษ์สิ่งแวดล้อม ตัวเลือก C (index 2) จึงเป็นคำตอบที่ครอบคลุมและถูกต้องที่สุด"
+      },
+      {
+        "id": "q2",
+        "question": "According to the passage, which of the following is NOT listed as a primary driver of biodiversity loss?",
+        "options": [
+          "Habitat destruction",
+          "Climate change",
+          "Overpopulation of indigenous species",
+          "Pollution"
+        ],
+        "answer": 2,
+        "explanation": "ในย่อหน้า 2 ระบุสาเหตุหลักของการสูญเสียความหลากหลายทางชีวภาพได้แก่ การทำลายถิ่นที่อยู่ การเปลี่ยนแปลงสภาพภูมิอากาศ มลภาวะ และการใช้ทรัพยากรมากเกินไป ไม่ได้กล่าวถึงการที่สัตว์พื้นเมืองมีประชากรมากเกินไปว่าเป็นสาเหตุหลักของการสูญเสียความหลากหลายทางชีวภาพ"
+      },
+      {
+        "id": "q3",
+        "question": "The passage states that 'The decline of biodiversity weakens ecosystem resilience'. What does 'resilience' most closely refer to in this context?",
+        "options": [
+          "The ability to recover from disturbances.",
+          "The strength of an ecosystem's food web.",
+          "The number of species an ecosystem contains.",
+          "The resistance of an ecosystem to human activity."
+        ],
+        "answer": 0,
+        "explanation": "คำว่า 'resilience' ในบริบทนี้หมายถึงความสามารถของระบบนิเวศในการฟื้นตัวหรือปรับตัวหลังจากการถูกรบกวนหรือความเสียหาย ตัวเลือก A (index 0) จึงถูกต้องที่สุด"
+      },
+      {
+        "id": "q4",
+        "question": "According to the passage, what crucial role do local communities and indigenous peoples play in conservation efforts?",
+        "options": [
+          "They primarily contribute by providing financial support for large-scale projects.",
+          "They are essential for setting global conservation targets and policies.",
+          "They often possess invaluable traditional ecological knowledge vital for on-the-ground initiatives.",
+          "Their main role is to manage international agreements like the CBD."
+        ],
+        "answer": 2,
+        "explanation": "ย่อหน้า 4 ระบุไว้อย่างชัดเจนว่าการเสริมสร้างศักยภาพให้กับชุมชนท้องถิ่นและชนพื้นเมือง ซึ่งมักจะมีความรู้ด้านนิเวศวิทยาแบบดั้งเดิมที่มีคุณค่า เป็นสิ่งสำคัญอย่างยิ่งสำหรับโครงการอนุรักษ์ในพื้นที่"
+      },
+      {
+        "id": "q5",
+        "question": "The passage suggests that the future of environmental conservation requires a shift from what approach to what new approach?",
+        "options": [
+          "From international cooperation to national policy frameworks.",
+          "From focusing on protected areas to promoting ecotourism.",
+          "From a reactive approach of 'protecting' to a proactive strategy of 'restoring' and integrating conservation.",
+          "From ethical obligations to purely pragmatic economic recognitions."
+        ],
+        "answer": 2,
+        "explanation": "ย่อหน้าสุดท้าย (ย่อหน้า 5) อธิบายว่าแนวคิดการอนุรักษ์สิ่งแวดล้อมกำลังเปลี่ยนจากแนวทางเชิงรับที่มุ่งเน้นการ 'ปกป้อง' สิ่งที่เหลืออยู่ ไปสู่กลยุทธ์เชิงรุกที่ 'ฟื้นฟู' ระบบนิเวศที่เสื่อมโทรม และผนวกหลักการอนุรักษ์เข้ากับการพัฒนาทุกด้าน"
+      }
+    ]
+  },
+  {
+    "id": "cefr_reading_dailyroutines_01",
+    "title": "CEFR A2 Reading: Daily Routines",
+    "type": "CEFR",
+    "skill": "Reading",
+    "content": "Tom has a busy but organized daily routine. He always wakes up at 6:30 AM on weekdays. First, he makes a cup of coffee and eats a light breakfast, usually toast and jam. After breakfast, he takes a shower and gets dressed. He leaves his house at 7:45 AM to catch the 8:00 AM bus to work.\n\nTom works as a cashier at a supermarket. He starts work at 8:30 AM. For lunch, he usually eats a sandwich and fruit at 12:30 PM in the staff room. His work finishes at 5:00 PM.\n\nIn the evening, Tom often goes to the gym for an hour before going home. He arrives home around 6:30 PM. He likes to cook dinner, often simple pasta or chicken with vegetables. After dinner, he watches TV or reads a book. He usually goes to bed at 10:00 PM, ready for another busy day.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "What time does Tom wake up on weekdays?",
+        "options": [
+          "6:00 AM",
+          "6:30 AM",
+          "7:00 AM",
+          "7:30 AM"
+        ],
+        "answer": 1,
+        "explanation": "ตามเนื้อเรื่อง Tom ตื่นนอนเวลา 6:30 AM (He always wakes up at 6:30 AM on weekdays.)"
+      },
+      {
+        "id": "q2",
+        "question": "What does Tom usually eat for breakfast?",
+        "options": [
+          "Cereal and milk",
+          "Eggs and bacon",
+          "Toast and jam",
+          "Coffee only"
+        ],
+        "answer": 2,
+        "explanation": "เนื้อเรื่องระบุว่าเขากินอาหารเช้าเบาๆ ซึ่งมักจะเป็นขนมปังปิ้งและแยม (eats a light breakfast, usually toast and jam.)"
+      },
+      {
+        "id": "q3",
+        "question": "What is Tom's job?",
+        "options": [
+          "A bus driver",
+          "A chef",
+          "A supermarket cashier",
+          "A gym instructor"
+        ],
+        "answer": 2,
+        "explanation": "ประโยคแรกของย่อหน้าที่สองบอกว่า Tom ทำงานเป็นพนักงานแคชเชียร์ที่ซูเปอร์มาร์เก็ต (Tom works as a cashier at a supermarket.)"
+      },
+      {
+        "id": "q4",
+        "question": "What does Tom do before going home in the evening?",
+        "options": [
+          "Cooks dinner",
+          "Watches TV",
+          "Reads a book",
+          "Goes to the gym"
+        ],
+        "answer": 3,
+        "explanation": "ก่อนกลับบ้านในตอนเย็น Tom มักจะไปยิมเป็นเวลาหนึ่งชั่วโมง (In the evening, Tom often goes to the gym for an hour before going home.)"
+      },
+      {
+        "id": "q5",
+        "question": "What time does Tom usually go to bed?",
+        "options": [
+          "9:00 PM",
+          "9:30 PM",
+          "10:00 PM",
+          "10:30 PM"
+        ],
+        "answer": 2,
+        "explanation": "ประโยคสุดท้ายของเนื้อเรื่องระบุว่า Tom เข้านอนเวลา 10:00 PM (He usually goes to bed at 10:00 PM.)"
+      }
+    ]
+  },
+  {
+    "id": "cefr_reading_20240729",
+    "title": "CEFR B1 Reading: Travel and Tourism - Exploring Venice Responsibly",
+    "type": "CEFR",
+    "skill": "Reading",
+    "content": "Venice, Italy, is one of the world's most beautiful and unique cities, famous for its canals, gondolas, and historic architecture. Millions of tourists visit every year, eager to experience its charm. However, this popularity also brings challenges. The sheer number of visitors can put a strain on the city's infrastructure and environment.\n\nIf you're planning a trip to Venice, it's important to be a responsible tourist. First, try to visit during the off-peak season, like autumn or winter, to avoid the biggest crowds and help spread tourism throughout the year. Second, always respect local customs and residents. Remember that Venice is a living city, not just a museum. For example, avoid eating picnics on public steps or throwing rubbish into the canals.\n\nThird, support local businesses. Instead of buying souvenirs from large international chains, look for handcrafted items from local artisans. This helps the Venetian economy and ensures you take home something truly authentic. Finally, consider walking or using the 'vaporetto' (water bus) instead of private water taxis, which can contribute to water pollution and congestion. By following these simple tips, you can enjoy your visit and help preserve Venice for future generations.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "What is one of the main problems caused by many tourists visiting Venice?",
+        "options": [
+          "The city becomes too quiet.",
+          "It puts pressure on the city's resources.",
+          "Gondola rides become too cheap.",
+          "Locals move away from the city."
+        ],
+        "answer": 1,
+        "explanation": "เนื้อเรื่องระบุว่า \"The sheer number of visitors can put a strain on the city's infrastructure and environment\" ซึ่งหมายถึงสร้างภาระให้กับทรัพยากรและสิ่งแวดล้อมของเมือง"
+      },
+      {
+        "id": "q2",
+        "question": "When is the passage's recommended time to visit Venice?",
+        "options": [
+          "Summer",
+          "Peak season",
+          "Autumn or winter",
+          "Spring"
+        ],
+        "answer": 2,
+        "explanation": "เนื้อเรื่องแนะนำให้ \"try to visit during the off-peak season, like autumn or winter\" เพื่อหลีกเลี่ยงฝูงชนจำนวนมาก"
+      },
+      {
+        "id": "q3",
+        "question": "What should responsible tourists avoid doing in Venice?",
+        "options": [
+          "Using the 'vaporetto'.",
+          "Supporting local businesses.",
+          "Eating picnics on public steps.",
+          "Walking around the city."
+        ],
+        "answer": 2,
+        "explanation": "เนื้อเรื่องระบุว่า \"avoid eating picnics on public steps or throwing rubbish into the canals\" เพื่อเป็นการเคารพสถานที่และสิ่งแวดล้อม"
+      },
+      {
+        "id": "q4",
+        "question": "How can tourists help the Venetian economy and get authentic souvenirs?",
+        "options": [
+          "By buying from large international chains.",
+          "By finding handcrafted items from local artisans.",
+          "By not buying anything at all.",
+          "By paying extra for souvenirs."
+        ],
+        "answer": 1,
+        "explanation": "เนื้อเรื่องแนะนำว่า \"look for handcrafted items from local artisans. This helps the Venetian economy and ensures you take home something truly authentic.\""
+      },
+      {
+        "id": "q5",
+        "question": "What is a good way to travel around Venice mentioned in the text?",
+        "options": [
+          "Private water taxis.",
+          "Flying a drone.",
+          "Walking or using the 'vaporetto'.",
+          "Renting a car."
+        ],
+        "answer": 2,
+        "explanation": "เนื้อเรื่องกล่าวว่า \"consider walking or using the 'vaporetto' (water bus) instead of private water taxis\" เพื่อลดมลพิษและความแออัด"
+      }
+    ]
+  },
+  {
+    "id": "cefr_reading_business_ethics_c1",
+    "title": "CEFR C1 Reading: Business Ethics",
+    "type": "CEFR",
+    "skill": "Reading",
+    "content": "Business ethics, far from being a mere optional appendage to corporate strategy, forms the very bedrock upon which sustainable success is built in the 21st century. It encompasses the moral principles and values that guide decision-making and behavior within the business world, extending beyond mere legal compliance to embrace societal expectations and human dignity. While the pursuit of profit remains a primary driver for any enterprise, a growing imperative exists for organizations to demonstrate a commitment to ethical conduct across all operations, from supply chain management and labor practices to marketing and environmental stewardship.\n\nThe complexity of modern business often presents formidable ethical dilemmas. Companies frequently navigate a fine line between maximizing shareholder value and fulfilling their broader responsibilities to employees, customers, communities, and the environment. This necessitates a proactive approach to corporate social responsibility (CSR), integrating ethical considerations into core business models rather than treating them as separate philanthropic gestures. Transparency, accountability, and integrity are no longer just buzzwords but essential components of a robust ethical framework, fostering trust among stakeholders and enhancing reputation.\n\nFurthermore, a strong ethical culture, championed by leadership, can significantly impact employee morale, retention, and productivity. Employees are more likely to be engaged and committed when they perceive their organization as operating with integrity and purpose. Conversely, a lack of ethical oversight can lead to scandals, reputational damage, and severe financial repercussions, underscoring the intrinsic value of embedding ethical principles deep within the organizational DNA. Ultimately, ethical business practices cultivate a symbiotic relationship between an enterprise and its ecosystem, proving that doing good is not just morally right but also strategically sound for long-term viability and competitive advantage.",
+    "questions": [
+      {
+        "id": "q1",
+        "question": "What is the central argument presented in the passage regarding business ethics?",
+        "options": [
+          "Business ethics is primarily about legal compliance and avoiding penalties.",
+          "Ethical conduct is a foundational element for sustainable business success, extending beyond profit to include societal responsibilities.",
+          "Companies face inevitable conflicts between maximizing profit and upholding ethical standards.",
+          "Corporate social responsibility is merely a philanthropic addition to core business activities."
+        ],
+        "answer": 1,
+        "explanation": "เนื้อเรื่องเน้นย้ำว่าจริยธรรมทางธุรกิจเป็นรากฐานสำคัญสำหรับความสำเร็จที่ยั่งยืน และไม่ได้เป็นเพียงแค่การปฏิบัติตามกฎหมายเท่านั้น แต่ยังรวมถึงความรับผิดชอบต่อสังคมด้วย"
+      },
+      {
+        "id": "q2",
+        "question": "According to the passage, what is a key challenge businesses face when dealing with ethical dilemmas?",
+        "options": [
+          "Determining which legal regulations apply to their specific industry.",
+          "Balancing the demands of maximizing shareholder value with broader responsibilities to various stakeholders.",
+          "Finding suitable philanthropic activities to integrate into their CSR initiatives.",
+          "Overcoming employee resistance to new ethical guidelines and training programs."
+        ],
+        "answer": 1,
+        "explanation": "ข้อความระบุว่าความท้าทายหลักคือการรักษาสมดุลระหว่างการเพิ่มมูลค่าผู้ถือหุ้นกับการทำตามความรับผิดชอบที่กว้างขึ้นต่อผู้มีส่วนได้ส่วนเสียต่างๆ โดยเฉพาะกับพนักงาน ลูกค้า ชุมชน และสิ่งแวดล้อม"
+      },
+      {
+        "id": "q3",
+        "question": "In the context of the first paragraph, what does the phrase \"a mere optional appendage\" suggest about the traditional view of business ethics?",
+        "options": [
+          "It was seen as a complex and integral part of business strategy.",
+          "It was considered an unnecessary cost that hindered profit generation.",
+          "It was viewed as something peripheral and not essential to core business operations.",
+          "It was perceived as a critical factor for attracting investment."
+        ],
+        "answer": 2,
+        "explanation": "วลี 'a mere optional appendage' หมายถึงสิ่งที่ถูกมองว่าเป็นเพียงส่วนประกอบเสริมที่ไม่จำเป็น ซึ่งบ่งชี้ว่าจริยธรรมทางธุรกิจเคยถูกมองว่าเป็นสิ่งที่ไม่ใช่หัวใจหลักของการดำเนินธุรกิจ"
+      },
+      {
+        "id": "q4",
+        "question": "What is a significant long-term benefit of a strong ethical culture, as implied by the passage?",
+        "options": [
+          "Increased immediate financial returns for shareholders.",
+          "Guaranteed avoidance of all potential scandals and reputational damage.",
+          "Enhanced employee engagement, retention, and overall productivity.",
+          "Simplification of legal compliance processes."
+        ],
+        "answer": 2,
+        "explanation": "ข้อความระบุไว้อย่างชัดเจนในย่อหน้าสุดท้ายว่าวัฒนธรรมองค์กรที่มีจริยธรรมเข้มแข็งสามารถส่งผลกระทบอย่างมีนัยสำคัญต่อขวัญกำลังใจของพนักงาน การรักษาพนักงาน และผลิตภาพ"
+      },
+      {
+        "id": "q5",
+        "question": "Which of the following statements best summarizes the passage's perspective on the relationship between ethical practices and business success?",
+        "options": [
+          "Ethical practices are often at odds with profit generation, requiring businesses to choose one over the other.",
+          "While desirable, ethical practices are secondary to achieving financial objectives in the long run.",
+          "Ethical conduct is intrinsically linked to long-term viability and competitive advantage, fostering a symbiotic relationship with the business ecosystem.",
+          "Businesses should engage in ethical practices primarily to improve their public image and attract philanthropic partners."
+        ],
+        "answer": 2,
+        "explanation": "ข้อสรุปของเนื้อเรื่องคือการปฏิบัติทางจริยธรรมมีความเชื่อมโยงอย่างใกล้ชิดกับความยั่งยืนในระยะยาวและความได้เปรียบในการแข่งขัน สร้างความสัมพันธ์แบบพึ่งพาอาศัยกันระหว่างธุรกิจกับระบบนิเวศ โดยระบุว่า 'doing good is not just morally right but also strategically sound for long-term viability and competitive advantage.'"
+      }
+    ]
+  }
+]

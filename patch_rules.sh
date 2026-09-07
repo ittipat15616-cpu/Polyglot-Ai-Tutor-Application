@@ -1,0 +1,2 @@
+sed -i '/match \/memory\/global {/i \
+      match /learning_plans/{planId} {\n        allow read: if (isSignedIn() && isOwner(userId) && isValidId(userId)) || isAdmin();\n        allow create, update: if (isSignedIn() && isOwner(userId) && isValidId(userId) && isValidId(planId) && incoming().keys().hasAll(["plan", "updatedAt"]) && incoming().plan is string && incoming().updatedAt is number) || isAdmin();\n      }\n' firestore.rules

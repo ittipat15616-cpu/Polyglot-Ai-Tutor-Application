@@ -1,0 +1,1 @@
+sed -i 's/overallProgressPercent: number;/targetLevel: string;\n  vocabPerDay: number;\n  lessonsPerDay: number;\n  currentVocabIndex: number;\n  currentLessonIndex: number;\n  overallProgressPercent: number;/g' src/services/studyPlanService.ts

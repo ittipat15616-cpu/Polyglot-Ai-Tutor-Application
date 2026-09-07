@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "UserProgress": {
+      "title": "User Progress",
+      "description": "Stores user learning progress.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "completedLessons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "userId"
+      ]
+    },
+    "ChatSession": {
+      "title": "Chat Session",
+      "description": "Stores user chat sessions for AI tutors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": { "type": "string", "enum": ["user", "model"] },
+              "text": { "type": "string" }
+            },
+            "required": ["role", "text"]
+          }
+        },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "title", "messages", "lang", "createdAt"]
+    },
+    "UserMemory": {
+      "title": "User Memory",
+      "description": "Stores user learning profile, preferences and facts across chat and call.",
+      "type": "object",
+      "properties": {
+        "memories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["memories"]
+    },
+    "LearningPlan": {
+      "title": "Learning Plan",
+      "description": "Stores user generated learning plan.",
+      "type": "object",
+      "properties": {
+        "plan": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["plan", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/user_progress/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProgress"
+      },
+      "description": "User progress data indexed by user ID."
+    },
+    "/users/{userId}/chat_sessions/{sessionId}": {
+      "schema": {
+        "$ref": "#/entities/ChatSession"
+      },
+      "description": "User chat sessions for AI tutors."
+    },
+    "/users/{userId}/memory/global": {
+      "schema": {
+        "$ref": "#/entities/UserMemory"
+      },
+      "description": "User learning profile and general memories."
+    },
+    "/users/{userId}/learning_plans/{planId}": {
+      "schema": {
+        "$ref": "#/entities/LearningPlan"
+      },
+      "description": "User learning plan."
+    }
+  }
+}
