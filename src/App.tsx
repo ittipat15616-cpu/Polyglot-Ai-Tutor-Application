@@ -19,7 +19,7 @@ import { TUTORIAL_SCRIPTS } from './data/tutorialData';
 import { initAuth, logout, listenToUserSession } from './firebase';
 import SubscriptionModal from './components/SubscriptionModal';
 import ByokModal from './components/ByokModal';
-import { loadUserSubscription, getTotalCredits, resetAllNonSuperAdminPurchasedCredits, setAllUsersToTestingPlan, syncAdminSubscriptions } from './services/subscriptionService';
+import { loadUserSubscription, getTotalCredits, syncAdminSubscriptions } from './services/subscriptionService';
 import { hasActiveByokKey, syncByokKeyWithFirestore } from './services/byokService';
 import { UserSubscriptionState, TIER_CONFIGS, isAdminEmail, isSuperAdminEmail } from './types/subscription';
 import { Crown, Zap, Lock, Key } from 'lucide-react';
@@ -150,10 +150,6 @@ export default function App() {
           isSubscribed: false,
         });
         syncByokKeyWithFirestore(user.uid);
-        if (isSuperAdminEmail(user.email)) {
-          resetAllNonSuperAdminPurchasedCredits().catch((e) => console.warn('Background credit cleanup:', e));
-          setAllUsersToTestingPlan().catch((e) => console.warn('Background testing plan update:', e));
-        }
         if (isAdminEmail(user.email)) {
           syncAdminSubscriptions().catch((e) => console.warn('Sync admin subscriptions:', e));
         }
@@ -254,11 +250,22 @@ export default function App() {
   const isFreeTier = !subState || subState.tier === 'FREE';
   const isTabAllowedByTier = currentTierConfig.allowedTabs.includes(activeTab);
   
-  // Free tier can only access Chinese (CN) for lessons, exercises & exams!
-  const isLanguageAllowedForFree = !isFreeTier || activeLang === 'CN' || (activeTab !== 'lessons' && activeTab !== 'exercises' && activeTab !== 'exams');
+  // Free tier can access lessons (คลังศัพท์), flashcards, vocab (คัดศัพท์), and vocab_exam (สอบศัพท์) in both CN and EN!
+  // Only exercises (บทเรียน) and exams (ข้อสอบ) in English (EN) require a paid plan.
+  const isLanguageAllowedForFree = !isFreeTier || activeLang === 'CN' || (activeTab !== 'exercises' && activeTab !== 'exams');
 
+  const isSuperAdmin = isSuperAdminEmail(currentUser?.email);
   const isAdmin = isAdminEmail(currentUser?.email);
-  const isTabLocked = !isAdmin && activeTab !== 'admin' && (!isTabAllowedByTier || !isLanguageAllowedForFree);
+
+  // For Super Admin (Owner - ittipat15616@gmail.com):
+  // Simulate the exact restrictions of the selected plan!
+  // Tab 'admin' is always accessible so Owner is never locked out of backend settings.
+  // When Owner simulates FREE, tabs like Games, Mock Tests, or English exercises/exams WILL be locked, exactly like a real user!
+  const isTabLocked = activeTab !== 'admin' && (
+    isSuperAdmin
+      ? (!isTabAllowedByTier || !isLanguageAllowedForFree)
+      : (!isAdmin && (!isTabAllowedByTier || !isLanguageAllowedForFree))
+  );
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
@@ -343,14 +350,23 @@ export default function App() {
             <div className="flex flex-col items-start">
               <span>
                 {isSuperAdminEmail(currentUser?.email)
-                  ? 'Ultra Plan (Owner)'
+                  ? `${currentTierConfig.name} (Owner)`
                   : isAdminEmail(currentUser?.email)
-                  ? 'Ultra Plan (Admin)'
+                  ? 'Starter Plan (Admin)'
                   : currentTierConfig.name}
               </span>
               {subState?.expiresAt && subState.tier !== 'FREE' && (
                 <span className="text-[9px] text-amber-100 flex items-center gap-1 font-mono">
-                  {isAdminEmail(currentUser?.email) ? (
+                  {isSuperAdminEmail(currentUser?.email) ? (
+                    subState.tier === 'ULTRA' ? (
+                      <span>ตลอดชีพ</span>
+                    ) : (
+                      <>
+                        <Timer size={10} />
+                        <CountdownTimer expiresAt={subState.expiresAt} onExpire={() => loadUserSubscription().then(setSubState)} />
+                      </>
+                    )
+                  ) : isAdminEmail(currentUser?.email) ? (
                     <span>ตลอดชีพ</span>
                   ) : (
                     <>
@@ -458,7 +474,16 @@ export default function App() {
                 ) : (
                   <UserCircle size={18} className="text-indigo-600" />
                 )}
-                <span className="max-w-[110px] truncate">{currentUser.name}</span>{isAdminEmail(currentUser.email) && <span className="ml-1 px-1.5 py-0.5 bg-purple-100 text-purple-800 font-bold text-[10px] rounded border border-purple-200">{isSuperAdminEmail(currentUser.email) ? 'Owner' : 'Admin'}</span>}
+                <span className="max-w-[110px] truncate">{currentUser.name}</span>
+                {isAdminEmail(currentUser.email) && (
+                  <span className={`ml-1 px-1.5 py-0.5 font-bold text-[10px] rounded border ${
+                    isSuperAdminEmail(currentUser.email)
+                      ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
+                      : 'bg-purple-100 text-purple-800 border-purple-200'
+                  }`}>
+                    {isSuperAdminEmail(currentUser.email) ? 'Owner' : 'Admin'}
+                  </span>
+                )}
               </div>
               <button
                 onClick={async () => {
@@ -485,7 +510,7 @@ export default function App() {
       </header>
 
       {/* ── MAIN ── */}
-      <main className="relative z-0 flex-1 overflow-y-auto w-full pb-20 md:pb-0">
+      <main className="flex-1 overflow-y-auto w-full pb-20 md:pb-0">
         <div className="max-w-5xl mx-auto p-4 md:p-6 w-full flex flex-col min-h-full">
           {isTabLocked ? (
             /* Locked Tab Overlay */
@@ -524,7 +549,7 @@ export default function App() {
             )}
             {activeTab === 'flashcards' && (
               <motion.div key={`flashcards_${currentUser?.uid || 'guest'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
-                <FlashcardsArea activeLang={activeLang} />
+                <FlashcardsArea activeLang={activeLang} onAskAI={handleAskAI} />
               </motion.div>
             )}
             {activeTab === 'vocab_exam' && (

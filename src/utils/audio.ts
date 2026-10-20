@@ -1,11 +1,21 @@
 let currentAudio: HTMLAudioElement | null = null;
+let activeTtsRequestId = 0;
 
 export const playTTS = async (text: string, lang: 'EN' | 'CN' | 'TH', onEnd?: () => void) => {
+  // Invalidate any previous in-flight requests
+  const requestId = ++activeTtsRequestId;
+
   // Cancel any currently playing TTS
   if (currentAudio) {
     try {
       currentAudio.pause();
       currentAudio.currentTime = 0;
+    } catch (e) {}
+    currentAudio = null;
+  }
+  if ('speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
     } catch (e) {}
   }
 
@@ -19,30 +29,49 @@ export const playTTS = async (text: string, lang: 'EN' | 'CN' | 'TH', onEnd?: ()
       })
     });
     
+    // If a newer TTS request was triggered while fetching, ignore this result
+    if (requestId !== activeTtsRequestId) {
+      return null;
+    }
+
     if (!response.ok) {
       throw new Error(`TTS API failed with status: ${response.status}`);
     }
     
     const data = await response.json();
+    if (requestId !== activeTtsRequestId) {
+      return null;
+    }
+
     if (data.audio) {
       const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
       currentAudio = audio;
       
       if (onEnd) {
-        audio.onended = onEnd;
+        audio.onended = () => {
+          if (requestId === activeTtsRequestId) {
+            onEnd();
+          }
+        };
       }
       
-      await audio.play().catch(e => {
+      try {
+        await audio.play();
+        return audio;
+      } catch (e) {
         console.warn('Audio play prevented by browser, using fallback:', e);
-        playLocalFallbackTTS(text, lang, onEnd);
-      });
-      return audio;
+        if (requestId === activeTtsRequestId) {
+          playLocalFallbackTTS(text, lang, onEnd);
+        }
+      }
     } else {
-       throw new Error('No audio data received');
+      throw new Error('No audio data received');
     }
   } catch (err) {
     console.warn("TTS API failed, using local fallback", err);
-    playLocalFallbackTTS(text, lang, onEnd);
+    if (requestId === activeTtsRequestId) {
+      playLocalFallbackTTS(text, lang, onEnd);
+    }
   }
   return null;
 };
@@ -53,8 +82,9 @@ export const playLocalFallbackTTS = (text: string, lang: string, onEnd?: () => v
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = lang === 'CN' ? 'zh-CN' : lang === 'TH' ? 'th-TH' : 'en-US';
+      const voices = window.speechSynthesis.getVoices();
+
       if (lang === 'EN') {
-        const voices = window.speechSynthesis.getVoices();
         const maleVoice = voices.find(v => 
           v.lang.startsWith('en') && (
             v.name.toLowerCase().includes('male') || 
@@ -68,7 +98,27 @@ export const playLocalFallbackTTS = (text: string, lang: string, onEnd?: () => v
           )
         );
         if (maleVoice) utterance.voice = maleVoice;
+      } else if (lang === 'TH') {
+        // Find Thai male voice (e.g. Niwat, Santi, Pattara, or male indicator)
+        const thaiMaleVoice = voices.find(v => 
+          (v.lang.startsWith('th') || v.lang.includes('TH')) && (
+            v.name.toLowerCase().includes('niwat') || 
+            v.name.toLowerCase().includes('male') || 
+            v.name.toLowerCase().includes('man') || 
+            v.name.toLowerCase().includes('santi') || 
+            v.name.toLowerCase().includes('pattara') || 
+            v.name.toLowerCase().includes('tatchakorn')
+          )
+        );
+        if (thaiMaleVoice) {
+          utterance.voice = thaiMaleVoice;
+        } else {
+          // If only default female or generic voice is installed, lower pitch to natural masculine range
+          utterance.pitch = 0.85;
+          utterance.rate = 0.95;
+        }
       }
+
       if (onEnd) {
         utterance.onend = onEnd;
         utterance.onerror = onEnd;
@@ -87,6 +137,7 @@ export const playThaiTTS = async (text: string, onEnd?: () => void) => {
 };
 
 export const stopThaiTTS = () => {
+  activeTtsRequestId++; // Invalidate any in-flight requests
   if (currentAudio) {
     try {
       currentAudio.pause();
@@ -95,6 +146,9 @@ export const stopThaiTTS = () => {
     currentAudio = null;
   }
   if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {}
   }
 };
+

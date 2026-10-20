@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence, useAnimation, PanInfo } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { ChevronLeft, Home, Play, RotateCcw, ArrowRight, Volume2, CheckCircle2, XCircle, PenTool } from 'lucide-react';
+import { ChevronLeft, Home, Play, RotateCcw, ArrowRight, Volume2, CheckCircle2, XCircle, PenTool, Bot } from 'lucide-react';
 import { GoodnotesDeckState, loadGoodnotesDeckState, saveGoodnotesDeckState } from '../services/userPersistence';
 import HanziWriter from 'hanzi-writer';
 import { useRef } from 'react';
@@ -28,7 +28,8 @@ export default function GoodnotesMode({
   lang,
   allLevelVocab,
   onBack,
-  directLaunch
+  directLaunch,
+  onAskAI
 }: any) {
   const [activeDeckIndex, setActiveDeckIndex] = useState<number | null>(null);
   const [isPreparing, setIsPreparing] = useState(!!directLaunch);
@@ -105,6 +106,7 @@ export default function GoodnotesMode({
           setActiveDeckIndex(null); // Last deck completed
         }
       }}
+      onAskAI={onAskAI}
     />
   );
 }
@@ -299,7 +301,7 @@ function GoodnotesHanziWord({ word, isAnimating }: { word: string, isAnimating: 
   return <div ref={containerRef} className="flex flex-row flex-wrap justify-center items-center gap-2 mb-6" />;
 }
 
-function DeckPlayer({ level, lang, deckIndex, deckBounds, allLevelVocab, onBackToDecks, onNextDeck }: any) {
+function DeckPlayer({ level, lang, deckIndex, deckBounds, allLevelVocab, onBackToDecks, onNextDeck, onAskAI }: any) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [state, setState] = useState<GoodnotesDeckState | null>(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -516,6 +518,16 @@ function DeckPlayer({ level, lang, deckIndex, deckBounds, allLevelVocab, onBackT
             <button onClick={playAudio} className="absolute top-6 left-6 p-2.5 bg-indigo-50 rounded-full hover:bg-indigo-100 text-indigo-600 transition-colors">
               <Volume2 size={24} className={isPlayingAudio ? 'animate-pulse' : ''} />
             </button>
+
+            {onAskAI && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); onAskAI(currentWord.word); }}
+                className="absolute top-6 left-20 p-2.5 bg-purple-50 text-purple-600 rounded-full hover:bg-purple-600 hover:text-white transition-colors shadow-sm"
+                title="ถามติวเตอร์ AI (เปิดสายคอลเพื่อสอนคำนี้ทันที)"
+              >
+                <Bot size={24} />
+              </button>
+            )}
             
             {lang === 'CN' && (
               <button 

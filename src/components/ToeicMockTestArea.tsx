@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, Clock, CheckCircle, XCircle, FileText, Maximize2, Minimize2, X } from 'lucide-react';
 import { getFirebaseStorageUrl } from '../utils/firebaseStorage';
 import AnnotationToolbar, { AnnotationState } from './AnnotationToolbar';
@@ -211,63 +212,72 @@ export default function ToeicMockTestArea({ examId, mode, onBack }: ToeicMockTes
   }
 
   // Active Test Screen
-  return (
-    <div className={`flex flex-col w-full ${isFullscreen ? 'fixed inset-0 z-[100] bg-white pt-36 sm:pt-40' : 'h-[calc(100vh-80px)]'}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-4 bg-white border-b border-gray-200 shrink-0">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="text-gray-400 hover:text-gray-600">
-            <ChevronLeft size={24} />
+  const mainContent = (
+    <div className={`flex flex-col w-full ${isFullscreen ? 'fixed inset-0 z-[999999] bg-white h-screen overflow-hidden' : 'h-[calc(100vh-80px)]'}`}>
+      {/* Header — locked at top */}
+      <div className={`flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3.5 bg-white border-b border-gray-200 shrink-0 gap-2 z-[10] ${isFullscreen ? 'pt-[max(env(safe-area-inset-top),20px)] shadow-md' : ''}`}>
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <button onClick={onBack} className="p-1 text-gray-400 hover:text-gray-600 shrink-0">
+            <ChevronLeft size={22} />
           </button>
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">{testData.name}</h2>
-            <p className="text-xs text-gray-500">{mode === 'mock' ? 'Mock Test Mode' : 'Practice Mode'}</p>
+          <div className="min-w-0">
+            <h2 className="text-sm sm:text-lg font-bold text-gray-800 truncate">{testData.name}</h2>
+            <p className="text-[11px] text-gray-500">{mode === 'mock' ? 'Mock Test Mode' : (isFullscreen ? 'โหมดเต็มจอ' : 'Practice Mode')}</p>
           </div>
         </div>
         
         {(testData as any).audioPath && (
-          <div className="flex items-center gap-4 bg-indigo-50 px-4 py-2 rounded-full shadow-inner flex-1 max-w-2xl justify-center mx-4 hidden sm:flex">
-            <span className="text-sm font-bold text-indigo-900 whitespace-nowrap hidden lg:inline">Listening Audio</span>
+          <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-full shadow-inner flex-1 max-w-xl justify-center mx-2 hidden md:flex">
+            <span className="text-xs sm:text-sm font-bold text-indigo-900 whitespace-nowrap">Listening Audio</span>
             <audio 
               controls 
               controlsList="nodownload noplaybackrate"
-              className="w-full max-w-[300px] h-8 outline-none" 
+              className="w-full max-w-[280px] h-8 outline-none" 
               src={getFirebaseStorageUrl((testData as any).audioPath)}
             />
           </div>
         )}
 
         {mode === 'mock' ? (
-          <div className="flex items-center gap-6">
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold font-mono text-lg ${timeLeft < 300 ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-slate-100 text-slate-700'}`}>
-              <Clock size={20} />
-              {formatTime(timeLeft)}
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <div className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl font-bold font-mono text-xs sm:text-base ${timeLeft < 300 ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-slate-100 text-slate-700'}`}>
+              <Clock size={16} />
+              <span>{formatTime(timeLeft)}</span>
             </div>
             <button
               onClick={() => { if(window.confirm('ต้องการส่งข้อสอบใช่หรือไม่?')) handleSubmit(); }}
               disabled={isSubmitting}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-bold shadow-sm transition-colors shrink-0"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-colors shrink-0"
             >
               {isSubmitting ? 'กำลังตรวจ...' : 'ส่งข้อสอบ'}
             </button>
           </div>
+        ) : isFullscreen ? (
+          <button
+            onClick={() => setIsFullscreen(false)}
+            className="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold border border-rose-200 shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
+            title="ออกเต็มจอ"
+          >
+            <X size={16} />
+            <span>ออกเต็มจอ</span>
+          </button>
         ) : (
           <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold shadow-sm transition-colors flex items-center gap-2 shrink-0"
+            onClick={() => setIsFullscreen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
           >
-            {isFullscreen ? <><Minimize2 size={20} /> ย่อหน้าจอ</> : <><Maximize2 size={20} /> ดูแบบเต็มจอ</>}
+            <Maximize2 size={16} /> <span className="hidden sm:inline">ดูแบบเต็มจอ</span><span className="sm:hidden">เต็มจอ</span>
           </button>
         )}
       </div>
 
       {/* Mobile Audio Player */}
       {(testData as any).audioPath && (
-        <div className="sm:hidden bg-indigo-50 px-4 py-3 border-b border-gray-200 shrink-0 flex justify-center">
+        <div className="md:hidden bg-indigo-50/90 px-3 sm:px-4 py-2 border-b border-gray-200 shrink-0 flex items-center gap-2">
           <audio 
             controls 
             controlsList="nodownload noplaybackrate"
-            className="w-full max-w-sm h-8 outline-none" 
+            className="w-full h-8 outline-none" 
             src={getFirebaseStorageUrl((testData as any).audioPath)}
           />
         </div>
@@ -275,15 +285,6 @@ export default function ToeicMockTestArea({ examId, mode, onBack }: ToeicMockTes
 
       {/* Main Content */}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden relative">
-        {/* Floating Close Button in Fullscreen */}
-        {isFullscreen && (
-          <button
-            onClick={() => setIsFullscreen(false)}
-            className="absolute top-6 right-6 md:top-8 md:right-8 z-50 bg-gray-900/60 hover:bg-gray-900/80 text-white p-3 rounded-full shadow-lg backdrop-blur-sm transition-all"
-          >
-            <X size={24} />
-          </button>
-        )}
         {/* Images Viewer */}
         <div className={`w-full ${mode === 'mock' ? 'md:flex-1 md:border-r border-b md:border-b-0' : 'md:flex-1'} flex-1 md:h-full flex flex-col bg-slate-100 min-h-0 relative border-gray-200`}>
           <div className="flex-1 overflow-y-auto p-4">
@@ -375,4 +376,6 @@ export default function ToeicMockTestArea({ examId, mode, onBack }: ToeicMockTes
       </div>
     </div>
   );
+
+  return isFullscreen ? createPortal(mainContent, document.body) : mainContent;
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Edit3, Type, Settings2, PlayCircle, Loader2, RefreshCcw, MonitorUp, MonitorOff, Plus, Minus, ImagePlus, Trash2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Clock, Key, X, Sparkles } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Edit3, Type, Settings2, PlayCircle, Loader2, RefreshCcw, MonitorUp, MonitorOff, Plus, Minus, ImagePlus, Trash2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Clock, Key, X, Sparkles, FileText, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import HanziWriter from 'hanzi-writer';
 import { Document, Page, pdfjs } from 'react-pdf';
@@ -8,7 +9,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { auth } from '../firebase';
 import { deductCredit, loadUserSubscription, getTotalCredits } from '../services/subscriptionService';
 import { getStoredByokKey, hasActiveByokKey, getByokCallRates } from '../services/byokService';
-import { isAdminEmail } from '../types/subscription';
+import { isAdminEmail, isSuperAdminEmail } from '../types/subscription';
 import InsufficientCreditsModal from './InsufficientCreditsModal';
 
 export type AvatarState = 
@@ -148,26 +149,57 @@ export default function VideoCallArea({
   const [boardData, setBoardData] = useState<BoardData | null>(null);
 
   const [isCalling, setIsCalling] = useState(false);
-  const [isSeriousMode, setIsSeriousMode] = useState(false);
+  const [isSeriousMode, setIsSeriousMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('polyglot_serious_mode') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('polyglot_serious_mode', isSeriousMode ? 'true' : 'false');
+    }
+  }, [isSeriousMode]);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [reconnectTrigger, setReconnectTrigger] = useState(0);
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [activeTranscript, setActiveTranscript] = useState<{ role: 'user' | 'model', text: string } | null>(null);
+  const [transcripts, setTranscripts] = useState<{ id: string, role: 'user' | 'model', text: string }[]>([]);
+  const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isCcEnabled, setIsCcEnabled] = useState(false);
+
+  useEffect(() => {
+    if (transcriptContainerRef.current) {
+      transcriptContainerRef.current.scrollTop = 0;
+    }
+  }, [transcripts]);
 
 
-  const [isDocBoardOpen, setIsDocBoardOpen] = useState(false);
+  const [isDocBoardOpen, setIsDocBoardOpen] = useState(true);
   const [docImageObj, setDocImageObj] = useState<HTMLImageElement | null>(null);
   const [docImageBase64, setDocImageBase64] = useState<string | null>(null);
+  const [docImageError, setDocImageError] = useState(false);
   
   // PDF States
   const [docPdfFile, setDocPdfFile] = useState<File | string | null>(null);
   const [docPdfPage, setDocPdfPage] = useState<number>(1);
+  const [docPdfInputPage, setDocPdfInputPage] = useState<string>('1');
   const [docPdfNumPages, setDocPdfNumPages] = useState<number>(0);
   const [isPdfFullscreen, setIsPdfFullscreen] = useState(false);
   const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const pdfPageContainerRef = useRef<HTMLDivElement | null>(null);
   const lastDocImagePayloadRef = useRef<{ data: string; mimeType: string } | null>(null);
+
+  const goToPdfPage = (targetPage: number) => {
+    if (!docPdfNumPages) return;
+    const clamped = Math.max(1, Math.min(targetPage, docPdfNumPages));
+    setDocPdfPage(clamped);
+    setDocPdfInputPage(String(clamped));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'doc_page_change', page: clamped }));
+    }
+  };
 
   const [docOverlayText, setDocOverlayText] = useState<string>('');
   const [docScale, setDocScale] = useState(1);
@@ -201,10 +233,12 @@ export default function VideoCallArea({
     if (!isCalling) {
       setBoardData(null); 
       setIsLiveConnected(false);
-      askWordSentRef.current = false;
-      setActiveTranscript(null);
+      lastHandledAskWordRef.current = null;
+      setTranscripts([]);
+      setIsCcEnabled(false);
     } else {
       setIsLiveConnected(true);
+      setIsCcEnabled(false);
     }
   }, [isCalling]);
 
@@ -230,7 +264,9 @@ export default function VideoCallArea({
   }, []);
 
   const currentUser = auth.currentUser;
+  const isSuperAdmin = isSuperAdminEmail(currentUser?.email);
   const isAdmin = isAdminEmail(currentUser?.email);
+  const isRegularAdmin = isAdmin && !isSuperAdmin;
   const activeRates = userSub ? getByokCallRates(userSub.tier) : getByokCallRates('STARTER');
 
   // AI Voice/Video Call Credit Deductor:
@@ -256,10 +292,12 @@ export default function VideoCallArea({
         const byokActive = hasActiveByokKey();
         const sub = await loadUserSubscription();
         const user = auth.currentUser;
-        const isAdminUser = isAdminEmail(user?.email);
+        const isSuperAdminUser = isSuperAdminEmail(user?.email);
+        const isRegularAdminUser = isAdminEmail(user?.email) && !isSuperAdminUser;
 
-        // Admin call is completely FREE when using BYOK
-        if (isAdminUser && byokActive) {
+        // Regular Admin call is completely FREE when using BYOK
+        // Super Admin (Owner) simulates active sub.tier rates!
+        if (isRegularAdminUser && byokActive) {
           return;
         }
 
@@ -318,10 +356,11 @@ export default function VideoCallArea({
     const byokActive = hasActiveByokKey();
     const rates = getByokCallRates(sub.tier);
     const user = auth.currentUser;
-    const isAdminUser = isAdminEmail(user?.email);
+    const isSuperAdminUser = isSuperAdminEmail(user?.email);
+    const isRegularAdminUser = isAdminEmail(user?.email) && !isSuperAdminUser;
 
-    // If Admin with BYOK, or BYOK user is on an unlimited tier (Premium, Pro, Ultra), allow call even with 0 credits
-    const isUnlimited = (isAdminUser && byokActive) || (byokActive && rates.isCallUnlimited);
+    // If Regular Admin with BYOK, or BYOK user is on an unlimited tier (Premium, Pro, Ultra), allow call even with 0 credits
+    const isUnlimited = (isRegularAdminUser && byokActive) || (byokActive && rates.isCallUnlimited);
     const minRequired = isUnlimited ? 0 : 1;
     if (getTotalCredits(sub) < minRequired) {
       setShowInsufficientModal(true);
@@ -330,6 +369,7 @@ export default function VideoCallArea({
     // Always start call with camera OFF
     setIsVidOn(false);
     isVidOnRef.current = false;
+    setIsCcEnabled(false);
     if (stream) {
       stream.getVideoTracks().forEach(track => {
         track.enabled = false;
@@ -363,7 +403,13 @@ export default function VideoCallArea({
         }]
       });
       if (!isCalling) {
-        setIsCalling(true);
+        startCallWithCreditCheck();
+      } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && lastHandledAskWordRef.current !== askWord) {
+        lastHandledAskWordRef.current = askWord;
+        wsRef.current.send(JSON.stringify({
+          type: 'ask_word',
+          word: askWord
+        }));
       }
     }
   }, [askWord, activeLang, isCalling]);
@@ -373,6 +419,7 @@ export default function VideoCallArea({
     if (askPdfUrl) {
       setDocPdfFile(askPdfUrl);
       setDocImageBase64(null); // Clear image if any
+      setDocImageError(false);
       lastDocImagePayloadRef.current = null;
       setIsDocBoardOpen(true);
       extractPdfTextAndSend(askPdfUrl);
@@ -475,10 +522,12 @@ export default function VideoCallArea({
     const byokActive = hasActiveByokKey();
     const rates = getByokCallRates(sub.tier);
     const user = auth.currentUser;
-    const isAdminUser = isAdminEmail(user?.email);
+    const isSuperAdminUser = isSuperAdminEmail(user?.email);
+    const isRegularAdminUser = isAdminEmail(user?.email) && !isSuperAdminUser;
 
-    // BYOK rates: Admin with BYOK = 0, Pro/Ultra = 0 (Free), Premium/Plus/Basic/Starter = 1 credit. Non-BYOK = 3 credits.
-    const uploadCost = (isAdminUser && byokActive) ? 0 : (byokActive ? rates.docUploadCreditCost : 3);
+    // BYOK rates: Regular Admin with BYOK = 0, Pro/Ultra = 0 (Free), Premium/Plus/Basic/Starter = 1 credit. Non-BYOK = 3 credits.
+    // Super Admin simulates their active sub.tier (e.g. Premium = 1 credit, Pro/Ultra = 0 credits, Free = 1 credit with BYOK)
+    const uploadCost = (isRegularAdminUser && byokActive) ? 0 : (byokActive ? rates.docUploadCreditCost : 3);
 
     if (uploadCost > 0) {
       const { success } = await deductCredit(uploadCost);
@@ -492,7 +541,9 @@ export default function VideoCallArea({
     if (file.type === "application/pdf") {
       setDocPdfFile(file);
       setDocPdfPage(1);
+      setDocPdfInputPage('1');
       setDocImageBase64(null); // Clear image
+      setDocImageError(false);
       lastDocImagePayloadRef.current = null;
       extractPdfTextAndSend(file);
       renderPdfPageForAI(file, 1);
@@ -501,6 +552,7 @@ export default function VideoCallArea({
       // It's an image
       setDocPdfFile(null); // Clear PDF
       setIsDocBoardOpen(true);
+      setDocImageError(false);
       const reader = new FileReader();
       reader.onload = (event) => {
         const result = event.target?.result as string;
@@ -530,7 +582,7 @@ export default function VideoCallArea({
   const interruptedTimeRef = useRef(0);
   const silenceOscillatorRef = useRef<OscillatorNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const askWordSentRef = useRef(false);
+  const lastHandledAskWordRef = useRef<string | null>(null);
   const lastAudioSentAtRef = useRef(0);
   const lastFrameSentAtRef = useRef(0);
 
@@ -604,7 +656,7 @@ export default function VideoCallArea({
         if (auth.currentUser) {
           params.set('userId', auth.currentUser.uid);
         }
-        const includeAskWord = Boolean(askWord && !askWordSentRef.current);
+        const includeAskWord = Boolean(askWord && lastHandledAskWordRef.current !== askWord);
         if (includeAskWord) params.set('askWord', askWord);
         if (isSeriousMode) params.set('seriousMode', 'true');
 
@@ -620,7 +672,7 @@ export default function VideoCallArea({
         await new Promise<void>((resolve, reject) => {
           socket.onopen = () => {
             if (!sessionActive) return;
-            if (includeAskWord) askWordSentRef.current = true;
+            if (includeAskWord) lastHandledAskWordRef.current = askWord;
             reconnectAttemptsRef.current = 0;
             setIsLiveConnected(true);
             setAvatarState('listening');
@@ -650,11 +702,14 @@ export default function VideoCallArea({
           }
 
           if (message.type === 'transcript') {
-            setActiveTranscript({ role: message.role, text: message.text });
-            clearTimeout((socket as any)._transcriptTimer);
-            (socket as any)._transcriptTimer = setTimeout(() => {
-              setActiveTranscript(null);
-            }, 5000);
+            setTranscripts(prev => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === message.role) {
+                // Append text to the same role's ongoing message
+                return [...prev.slice(0, -1), { ...last, text: last.text + " " + message.text }];
+              }
+              return [...prev, { id: Math.random().toString(), role: message.role, text: message.text }];
+            });
           }
 
           if (message.type === 'board_update') {
@@ -901,11 +956,12 @@ export default function VideoCallArea({
     const byokActive = hasActiveByokKey();
     const rates = getByokCallRates(sub.tier);
     const user = auth.currentUser;
-    const isAdminUser = isAdminEmail(user?.email);
+    const isSuperAdminUser = isSuperAdminEmail(user?.email);
+    const isRegularAdminUser = isAdminEmail(user?.email) && !isSuperAdminUser;
     
     let requiredCredits = 0;
     if (byokActive) {
-      requiredCredits = (isAdminUser || rates.isCallUnlimited) ? 0 : 1;
+      requiredCredits = (isRegularAdminUser || rates.isCallUnlimited) ? 0 : 1;
     } else {
       requiredCredits = nextVidOn ? 3 : 1;
     }
@@ -1091,30 +1147,34 @@ export default function VideoCallArea({
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row flex-1 w-full gap-4 relative min-h-0">
+      <div className="flex flex-row flex-1 w-full gap-2 md:gap-4 relative min-h-0">
         {/* Left: User & AI Camera Column */}
-      <div className={`w-full md:w-1/3 flex flex-col gap-4 ${isPdfFullscreen ? 'static' : ''}`}>
+      <div className="w-28 md:w-1/3 lg:w-1/4 flex flex-col gap-2 md:gap-4 shrink-0">
         <div className="flex justify-between items-center bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
           <span className="text-sm font-bold text-gray-700 ml-2">โหมดฝึกพูดจริงจัง</span>
           <button 
             onClick={() => {
-              if (isCalling) {
-                alert("กรุณาวางสายก่อนเพื่อเปลี่ยนโหมด");
-                return;
+              const nextMode = !isSeriousMode;
+              setIsSeriousMode(nextMode);
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({
+                  type: 'toggle_serious_mode',
+                  seriousMode: nextMode
+                }));
               }
-              setIsSeriousMode(!isSeriousMode);
             }}
             className={`w-12 h-6 rounded-full transition-colors relative ${isSeriousMode ? 'bg-indigo-600' : 'bg-gray-300'}`}
+            title={isSeriousMode ? "คลิกเพื่อสลับกลับเป็นโหมดปกติ (สอนเป็นภาษาไทย)" : "คลิกเพื่อเปิดโหมดฝึกพูดจริงจัง (สอนเป็นภาษาอังกฤษ/จีนล้วน)"}
           >
             <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${isSeriousMode ? 'left-7' : 'left-1'}`}></div>
           </button>
         </div>
-        {/* Cameras Wrapper: Row on mobile, Column on desktop */}
-        <div className={isPdfFullscreen ? "fixed bottom-4 right-4 z-[110] flex flex-col gap-2 w-24 md:w-32 shadow-2xl" : "flex flex-row md:flex-col gap-4 h-48 md:h-auto md:flex-1 shrink-0"}>
+        {/* Cameras Wrapper: Always Column */}
+        <div className="flex flex-col gap-2 md:gap-4 flex-1 min-h-0 shrink-0">
           {/* AI Panel — Mr.Pe (EN only) or elegant placeholder (CN/TH) */}
           <div
-            className={`flex-1 overflow-hidden relative ${isPdfFullscreen ? 'rounded-full aspect-square shadow-xl border-2 border-indigo-200' : 'rounded-2xl border border-indigo-100'}`}
-            style={{ minHeight: isPdfFullscreen ? undefined : 220, background: 'linear-gradient(145deg,#f5f3ff,#ede9fe)' }}
+            className="flex-1 overflow-hidden relative rounded-2xl border border-indigo-100"
+            style={{ minHeight: 220, background: 'linear-gradient(145deg,#f5f3ff,#ede9fe)' }}
           >
             {activeLang === 'EN' ? (
               /* Elegant placeholder for Mr.Pe (EN) */
@@ -1165,20 +1225,10 @@ export default function VideoCallArea({
             <div className="absolute bottom-2 right-2 badge badge-indigo text-[9px]">
               {activeLang === 'EN' ? 'Mr.Pe' : activeLang === 'CN' ? 'ครูจีน AI' : 'ครูไทย AI'}
             </div>
-
-            {/* Active Subtitle overlay */}
-            {activeTranscript && (
-              <div className="absolute inset-x-0 bottom-0 bg-black/75 backdrop-blur-xs text-white p-2.5 text-xs text-center font-medium leading-relaxed z-20">
-                <span className={activeTranscript.role === 'user' ? 'text-amber-400 font-bold mr-1' : 'text-emerald-400 font-bold mr-1'}>
-                  {activeTranscript.role === 'user' ? 'คุณ: ' : (activeLang === 'CN' ? 'หลี่เหล่าซือ: ' : 'Mr.Pe: ')}
-                </span>
-                {activeTranscript.text}
-              </div>
-            )}
           </div>
           
           {/* User Camera and Screen Share */}
-          <div className={`shrink-0 bg-black overflow-hidden relative ${isPdfFullscreen ? 'rounded-full aspect-square shadow-xl w-24 md:w-32' : 'w-1/3 md:w-full md:h-1/3 md:min-h-[160px] rounded-2xl shadow-inner'}`}>
+          <div className="shrink-0 bg-black overflow-hidden relative w-1/3 md:w-full md:h-1/3 md:min-h-[160px] rounded-2xl shadow-inner">
             {screenStream && (
               <video 
                  ref={screenVideoRef} 
@@ -1206,7 +1256,7 @@ export default function VideoCallArea({
 
         {/* ── Call Controls — Elegant Premium ── */}
         <div
-          className={`flex justify-center gap-2.5 sm:gap-3 shrink-0 flex-wrap p-3 rounded-2xl ${isPdfFullscreen ? 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[110] shadow-2xl' : ''}`}
+          className="flex justify-center gap-2.5 sm:gap-3 shrink-0 flex-wrap p-3 rounded-2xl"
           style={{
             background: 'rgba(255,255,255,0.92)',
             backdropFilter: 'blur(20px)',
@@ -1224,7 +1274,27 @@ export default function VideoCallArea({
                 </div>
 
                 {/* Rate indicator badge */}
-                {isAdmin ? (
+                {isSuperAdmin ? (
+                  isByokActive ? (
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('open-byok-modal'))}
+                      className="text-[10px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all bg-gradient-to-r from-amber-50 to-orange-50 text-amber-950 border-amber-300 hover:brightness-95 shadow-xs"
+                      title="สิทธิ์ Owner: กำลังจำลองเรตของแพลนนี้"
+                    >
+                      <Key size={11} className="text-amber-600" />
+                      <span>👑 Owner ({userSub?.tier || 'ULTRA'}): {activeRates.isCallUnlimited ? 'โทรฟรีไม่อั้น (0 เครดิต)' : isVidOn ? `วิดีโอ 1 เครดิต/${Math.round(activeRates.videoCallSecondsPerCredit / 60)} นาที` : `เสียง 1 เครดิต/${Math.round(activeRates.audioCallSecondsPerCredit / 60)} นาที`}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('open-byok-modal'))}
+                      className="text-[10px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
+                      title="สิทธิ์ Owner: โหมดปกติ (คลิกเพื่อตั้งค่า BYOK)"
+                    >
+                      <Key size={11} className="text-amber-600" />
+                      <span>👑 Owner ({userSub?.tier || 'ULTRA'}): {isVidOn ? 'วิดีโอ 3 เครดิต/30วิ' : 'เสียง 1 เครดิต/30วิ'}</span>
+                    </button>
+                  )
+                ) : isRegularAdmin ? (
                   isByokActive ? (
                     <button
                       onClick={() => window.dispatchEvent(new CustomEvent('open-byok-modal'))}
@@ -1342,9 +1412,29 @@ export default function VideoCallArea({
                 {isDocBoardOpen ? <Minus size={20} /> : <Plus size={20} />}
               </button>
               <button
-                onClick={() => { setIsCalling(false); setAvatarState('idle'); clearAskWord?.(); clearAskPdfUrl?.(); }}
+                onClick={() => setIsCcEnabled(!isCcEnabled)}
+                className={`p-3 rounded-xl transition-all duration-200 hover:scale-105 ${
+                  isCcEnabled ? 'text-indigo-600' : 'text-indigo-700'
+                }`}
+                style={isCcEnabled
+                  ? { background: 'var(--c-indigo-pale)', border: '1px solid rgba(124,58,237,0.3)' }
+                  : { background: 'var(--c-surface-3)', border: '1px solid rgba(124,58,237,0.15)' }
+                }
+                title={isCcEnabled ? 'ปิดสคริปต์ / ซับไตเติ้ล' : 'เปิดสคริปต์ / ซับไตเติ้ล'}
+              >
+                <div className="font-black text-[13px] leading-none w-5 h-5 flex items-center justify-center border-2 rounded-sm border-current">CC</div>
+              </button>
+              <button
+                onClick={() => { 
+                  setIsCalling(false); 
+                  setIsCcEnabled(false);
+                  setAvatarState('idle'); 
+                  clearAskWord?.(); 
+                  clearAskPdfUrl?.(); 
+                }}
                 className="p-3 rounded-xl text-white transition-all hover:scale-105"
                 style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: '0 2px 12px rgba(239,68,68,0.35)' }}
+                title="วางสาย"
               >
                 <PhoneOff size={20} />
               </button>
@@ -1371,108 +1461,234 @@ export default function VideoCallArea({
             </motion.button>
           )}
         </div>
+
+        {/* ── Subtitles / Script Box (Auto-hidden when call ends) ── */}
+        {isCalling && isCcEnabled && (
+          <div 
+            ref={transcriptContainerRef} 
+            className="flex-1 min-h-[120px] max-h-[250px] bg-gray-900 rounded-2xl shadow-inner border border-gray-800 p-3.5 overflow-y-auto flex flex-col gap-2.5 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent shrink-0 text-sm"
+          >
+            <div className="flex items-center justify-between pb-1.5 border-b border-gray-800 text-xs text-gray-400 shrink-0">
+              <span className="font-semibold text-gray-300 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                สคริปต์การสนทนา (Live Script)
+              </span>
+              <button 
+                onClick={() => setIsCcEnabled(false)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+                title="ปิดสคริปต์"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {transcripts.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-gray-500 font-medium py-3">
+                กำลังรอการสนทนา...
+              </div>
+            ) : (
+              [...transcripts].reverse().map(t => (
+                <div key={t.id} className={t.role === 'user' ? 'text-right' : 'text-left'}>
+                  <span className={t.role === 'user' ? 'text-amber-400 font-bold mr-2' : 'text-emerald-400 font-bold mr-2'}>
+                    {t.role === 'user' ? 'คุณ:' : (activeLang === 'CN' ? 'หลี่เหล่าซือ:' : activeLang === 'EN' ? 'Mr.Pe:' : 'ครูไทย AI:')}
+                  </span>
+                  <span className="text-gray-100 leading-relaxed">{t.text}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right: Board/Canvas Wrapper */}
-      <div className={`w-full ${isDocBoardOpen ? 'md:w-3/4' : 'md:w-2/3'} min-h-[400px] md:min-h-0 flex flex-col xl:flex-row gap-4`}>
+      <div className={`flex-1 min-w-0 flex flex-col gap-2 md:gap-4 overflow-y-auto pr-1 pb-4`}>
         
         {/* Doc Board (Optional) */}
         {isDocBoardOpen && (
-          <div className={isPdfFullscreen ? "fixed inset-0 z-[100] bg-white flex flex-col" : "flex-1 bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden flex flex-col relative min-h-[400px]"}>
-            <div className={`${isPdfFullscreen ? 'bg-white text-gray-800 border-indigo-100 shadow-sm' : 'bg-indigo-50/60 text-gray-600 border-indigo-100'} border-b p-3 flex justify-between items-center shrink-0`}>
-               <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
-                 <ImagePlus size={16} /> กระดานรูปภาพ / เอกสาร
+          <div className="flex-1 bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden flex flex-col relative min-h-[340px] md:min-h-[420px] max-h-[70vh] md:max-h-[78vh] shrink-0">
+            {/* Header Toolbar */}
+            <div className="bg-indigo-50/70 text-gray-700 border-b border-indigo-100 p-2.5 sm:p-3 flex flex-wrap justify-between items-center gap-2 shrink-0">
+               <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-indigo-800">
+                 <ImagePlus size={16} className="text-indigo-600 shrink-0" />
+                 <span className="truncate">กระดานรูปภาพ / เอกสาร</span>
                </div>
-               <div className="flex items-center gap-1">
+               
+               <div className="flex items-center flex-wrap gap-1 sm:gap-2">
+                 {/* PDF Page Navigation & Jump */}
                  {docPdfFile && (
-                   <>
-                     <button onClick={() => {
-                       const newPage = Math.max(docPdfPage - 1, 1);
-                       setDocPdfPage(newPage);
-                       if (wsRef.current?.readyState === WebSocket.OPEN) {
-                         wsRef.current.send(JSON.stringify({ type: 'doc_page_change', page: newPage }));
-                       }
-                     }} disabled={docPdfPage <= 1} className="p-1 disabled:opacity-40 hover:bg-indigo-100 text-indigo-600 rounded transition-colors"><ChevronLeft size={20}/></button>
-                     <span className="text-sm py-1 px-2 font-medium text-indigo-700">หน้า {docPdfPage} / {docPdfNumPages}</span>
-                     <button onClick={() => {
-                       const newPage = Math.min(docPdfPage + 1, docPdfNumPages);
-                       setDocPdfPage(newPage);
-                       if (wsRef.current?.readyState === WebSocket.OPEN) {
-                         wsRef.current.send(JSON.stringify({ type: 'doc_page_change', page: newPage }));
-                       }
-                     }} disabled={docPdfPage >= docPdfNumPages} className="p-1 disabled:opacity-40 hover:bg-indigo-100 text-indigo-600 rounded transition-colors mr-2"><ChevronRight size={20}/></button>
-                     <button onClick={() => setIsPdfFullscreen(!isPdfFullscreen)} className="p-1 hover:bg-indigo-100 text-indigo-500 rounded transition-colors mr-2">
-                        {isPdfFullscreen ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
+                   <div className="flex items-center gap-1 bg-white/80 px-2 py-0.5 rounded-xl border border-indigo-100 shadow-xs">
+                     <button 
+                       onClick={() => goToPdfPage(docPdfPage - 1)} 
+                       disabled={docPdfPage <= 1} 
+                       className="p-1 disabled:opacity-30 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors"
+                       title="หน้าก่อนหน้า"
+                     >
+                       <ChevronLeft size={17}/>
                      </button>
-                   </>
+
+                     <div className="flex items-center gap-1 text-xs font-bold text-indigo-900">
+                       <span>หน้า</span>
+                       <input 
+                         type="number"
+                         min={1}
+                         max={docPdfNumPages || 1}
+                         value={docPdfInputPage}
+                         onChange={(e) => setDocPdfInputPage(e.target.value)}
+                         onKeyDown={(e) => {
+                           if (e.key === 'Enter') {
+                             const num = parseInt(docPdfInputPage, 10);
+                             if (!isNaN(num)) goToPdfPage(num);
+                           }
+                         }}
+                         onBlur={() => {
+                           const num = parseInt(docPdfInputPage, 10);
+                           if (!isNaN(num)) goToPdfPage(num);
+                           else setDocPdfInputPage(String(docPdfPage));
+                         }}
+                         className="w-10 text-center py-0.5 px-1 border border-indigo-200 rounded-md text-xs font-bold text-indigo-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                         title="พิมพ์เลขหน้าแล้วกด Enter เพื่อข้ามหน้า"
+                       />
+                       <span>/ {docPdfNumPages || 1}</span>
+                     </div>
+
+                     <button 
+                       onClick={() => goToPdfPage(docPdfPage + 1)} 
+                       disabled={docPdfPage >= docPdfNumPages} 
+                       className="p-1 disabled:opacity-30 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors"
+                       title="หน้าถัดไป"
+                     >
+                       <ChevronRight size={17}/>
+                     </button>
+                   </div>
                  )}
+
+                 {/* Zoom Controls for Image */}
+                 {docImageBase64 && !docPdfFile && (
+                   <div className="hidden sm:flex items-center gap-1 bg-white/80 px-1.5 py-0.5 rounded-xl border border-indigo-100 shadow-xs">
+                     <button
+                       onClick={() => setDocScale(s => Math.min(s + 0.25, 4))}
+                       className="p-1 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors"
+                       title="ซูมเข้า"
+                     >
+                       <ZoomIn size={15} />
+                     </button>
+                     <span className="text-[11px] font-bold text-indigo-900 min-w-[34px] text-center">
+                       {Math.round(docScale * 100)}%
+                     </span>
+                     <button
+                       onClick={() => setDocScale(s => Math.max(s - 0.25, 0.5))}
+                       className="p-1 hover:bg-indigo-50 text-indigo-600 rounded-lg transition-colors"
+                       title="ซูมออก"
+                     >
+                       <ZoomOut size={15} />
+                     </button>
+                     <button
+                       onClick={() => { setDocScale(1); setDocPan({ x: 0, y: 0 }); }}
+                       className="p-1 hover:bg-indigo-50 text-gray-500 rounded-lg transition-colors"
+                       title="รีเซ็ตขนาด"
+                     >
+                       <RotateCcw size={13} />
+                     </button>
+                   </div>
+                 )}
+
+                 {/* Fullscreen Button — Top Right */}
                  {(docImageBase64 || docPdfFile) && (
-                   <>
-                     <label className="cursor-pointer text-indigo-500 hover:text-indigo-600 transition-colors p-1" title="เปลี่ยนภาพ/เอกสารใหม่">
+                   <button 
+                     onClick={() => setIsPdfFullscreen(true)} 
+                     className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                     title="ดูแบบเต็มจอ"
+                   >
+                     <Maximize2 size={14}/>
+                     <span>ดูแบบเต็มจอ</span>
+                   </button>
+                 )}
+
+                 {/* Upload / Replace & Remove */}
+                 {(docImageBase64 || docPdfFile) && (
+                   <div className="flex items-center gap-1 pl-1 border-l border-indigo-200">
+                     <label className="cursor-pointer text-indigo-600 hover:text-indigo-800 transition-colors p-1 hover:bg-indigo-100 rounded-lg" title="เปลี่ยนภาพ/เอกสารใหม่">
                        <ImagePlus size={16} />
                        <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
                      </label>
-                     <button onClick={() => { setDocImageBase64(null); setDocPdfFile(null); setDocImageObj(null); docImageRef.current = null; setDocOverlayText(''); }} className="text-red-500 hover:text-red-600 transition-colors p-1" title="ลบภาพ/เอกสาร">
+                     <button 
+                       onClick={() => { 
+                         setDocImageBase64(null); 
+                         setDocPdfFile(null); 
+                         setDocImageObj(null); 
+                         docImageRef.current = null; 
+                         setDocOverlayText(''); 
+                         setDocImageError(false); 
+                       }} 
+                       className="text-red-500 hover:text-red-700 transition-colors p-1 hover:bg-red-50 rounded-lg" 
+                       title="ลบภาพ/เอกสาร"
+                     >
                         <Trash2 size={16} />
                      </button>
-                   </>
+                   </div>
                  )}
                </div>
             </div>
-            <div className={`flex-1 relative overflow-auto flex items-center justify-center p-4 ${isPdfFullscreen ? 'bg-indigo-50/40' : 'bg-indigo-50/30'}`}>
+
+            {/* Content Display Area (Flexible height & vertically scrollable for clear viewing) */}
+            <div className="flex-1 relative overflow-auto bg-slate-50 flex flex-col p-2 sm:p-4 scrollbar-thin scrollbar-thumb-indigo-200">
                {!docImageBase64 && !docPdfFile ? (
-                 <label id="tutorial-call-upload" className="flex flex-col items-center justify-center w-full h-full border-2 border-dashed border-indigo-200 rounded-xl cursor-pointer hover:bg-indigo-50 transition-colors">
-                   <ImagePlus size={32} className="text-indigo-300 mb-2" />
-                   <span className="text-sm text-indigo-500 font-medium">คลิกเพื่ออัปโหลดรูปภาพ หรือ PDF</span>
+                 <label id="tutorial-call-upload" className="flex flex-col items-center justify-center w-full min-h-[220px] border-2 border-dashed border-indigo-200 rounded-2xl cursor-pointer hover:bg-indigo-50/60 transition-colors m-auto p-6">
+                   <div className="w-14 h-14 rounded-2xl bg-indigo-100/70 text-indigo-600 flex items-center justify-center mb-3 shadow-inner">
+                     <ImagePlus size={28} />
+                   </div>
+                   <span className="text-sm text-indigo-900 font-bold mb-1">คลิกเพื่ออัปโหลดรูปภาพ หรือ PDF</span>
+                   <span className="text-xs text-indigo-400">รูปภาพแบบฝึกหัด การบ้าน เอกสาร หรือข้อสอบ (AI จะอ่านเนื้อหาทันที)</span>
                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
                  </label>
                ) : docPdfFile ? (
-                 <div ref={pdfPageContainerRef} className="w-full h-full flex flex-col items-center overflow-y-auto">
+                 <div ref={pdfPageContainerRef} className="w-full flex-1 flex flex-col items-center overflow-y-auto">
                     <Document
                        file={docPdfFile}
-                       onLoadSuccess={({ numPages }) => setDocPdfNumPages(numPages)}
-                       loading={<div className="text-gray-400">กำลังโหลด PDF...</div>}
+                       onLoadSuccess={({ numPages }) => {
+                         setDocPdfNumPages(numPages);
+                         setDocPdfInputPage(String(docPdfPage));
+                       }}
+                       loading={<div className="text-gray-400 py-10 font-medium">กำลังโหลด PDF...</div>}
                     >
                        <Page 
                          pageNumber={docPdfPage} 
                          renderTextLayer={false} 
                          renderAnnotationLayer={false} 
                          onRenderSuccess={capturePdfPageForAI}
-                         className="shadow-lg mb-4" 
-                         width={isPdfFullscreen ? Math.min(window.innerWidth * 0.9, 1200) : 500} 
+                         className="shadow-md mb-2 rounded-lg overflow-hidden border border-gray-200" 
+                         width={Math.min(window.innerWidth > 768 ? 680 : window.innerWidth - 60, 800)} 
                        />
                     </Document>
                  </div>
                ) : (
-                 <div className="relative w-full h-full">
-                    <img 
-                      src={docImageBase64} 
-                      alt="Uploaded Doc" 
-                      className="absolute top-0 left-0 origin-top-left object-contain"
-                      style={{ 
-                         width: '100%', 
-                         height: '100%',
-                         transform: `scale(${docScale}) translate(${docPan.x}px, ${docPan.y}px)`,
-                         cursor: isDraggingDoc ? 'grabbing' : 'grab'
-                      }}
-                      onMouseDown={(e) => {
-                        setIsDraggingDoc(true);
-                        setDragStart({ x: e.clientX - docPan.x, y: e.clientY - docPan.y });
-                      }}
-                      onMouseMove={(e) => {
-                        if (!isDraggingDoc) return;
-                        setDocPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-                      }}
-                      onMouseUp={() => setIsDraggingDoc(false)}
-                      onMouseLeave={() => setIsDraggingDoc(false)}
-                      onWheel={(e) => {
-                        e.preventDefault();
-                        const scaleAmount = e.deltaY > 0 ? 0.9 : 1.1;
-                        setDocScale(prev => Math.max(0.5, Math.min(prev * scaleAmount, 5)));
-                      }}
-                    />
+                 <div className="w-full flex-1 flex flex-col items-center justify-start overflow-y-auto py-2">
+                    {docImageError ? (
+                      <div className="flex flex-col items-center justify-center w-full h-full text-indigo-400 py-10">
+                        <FileText size={48} className="mb-2 opacity-50" />
+                        <span className="text-sm font-medium">ไฟล์ถูกอัปโหลดสำเร็จ (AI มองเห็นเนื้อหา)</span>
+                        <span className="text-xs opacity-70 mt-1">บราวเซอร์ไม่รองรับการแสดงผลรูปภาพนี้</span>
+                      </div>
+                    ) : (
+                      <div className="w-full flex flex-col items-center">
+                        <img 
+                          src={docImageBase64} 
+                          alt="Uploaded Doc" 
+                          onError={() => setDocImageError(true)}
+                          className="w-full max-w-2xl rounded-xl shadow-md border border-gray-200 object-contain cursor-zoom-in transition-transform duration-150"
+                          style={{ 
+                             transform: `scale(${docScale}) translate(${docPan.x}px, ${docPan.y}px)`,
+                             transformOrigin: 'top center'
+                          }}
+                          onClick={() => setIsPdfFullscreen(true)}
+                          title="คลิกเพื่อดูแบบเต็มจอ"
+                        />
+                        <p className="text-[11px] text-gray-400 mt-2 font-medium">
+                          แตะหรือคลิกที่รูปภาพเพื่อเปิดโหมดดูเต็มจอ
+                        </p>
+                      </div>
+                    )}
                     {docOverlayText && (
-                      <div className="absolute top-4 left-4 right-4 bg-yellow-50/90 backdrop-blur text-yellow-900 p-4 rounded-xl shadow border border-yellow-200 pointer-events-none z-10 whitespace-pre-wrap font-medium">
+                      <div className="w-full max-w-2xl mt-3 bg-yellow-50/95 backdrop-blur text-yellow-900 p-3.5 rounded-xl shadow border border-yellow-200 text-xs sm:text-sm font-medium whitespace-pre-wrap">
                          {docOverlayText}
                       </div>
                     )}
@@ -1483,7 +1699,7 @@ export default function VideoCallArea({
         )}
 
         {/* Main Board */}
-        <div id="tutorial-call-board" className="flex-1 bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden flex flex-col relative h-[400px] md:h-auto">
+        <div id="tutorial-call-board" className="flex-1 bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden flex flex-col relative min-h-[250px] md:min-h-[300px] shrink-0">
           {/* Canvas Toolbar */}
           <div className="bg-indigo-50/60 border-b border-indigo-100 p-3 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
@@ -1535,6 +1751,173 @@ export default function VideoCallArea({
         </div>
       </div>
       </div>
+
+      {/* Fullscreen Document/Image Portal Modal */}
+      {isPdfFullscreen && (docImageBase64 || docPdfFile) && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999999] bg-slate-900/95 flex flex-col h-screen w-screen overflow-hidden backdrop-blur-md select-none">
+          {/* Top Bar locked at top with safe-area padding */}
+          <div className="shrink-0 z-10 bg-slate-900/90 border-b border-white/10 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 pt-[max(env(safe-area-inset-top),16px)] text-white">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 bg-indigo-600/30 text-indigo-400 rounded-xl shrink-0 border border-indigo-500/30">
+                <FileText size={18} />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-base font-bold text-white truncate">
+                  {docPdfFile ? (typeof docPdfFile === 'string' ? 'PDF Document' : docPdfFile.name) : 'รูปภาพ / เอกสารที่อัปโหลด'}
+                </h3>
+                <p className="text-[11px] text-indigo-300">โหมดดูเต็มจอ (AI ยังคงเห็นภาพและสนทนาได้ต่อเนื่อง)</p>
+              </div>
+            </div>
+
+            {/* Middle Controls (Page Navigation or Zoom) */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {docPdfFile && (
+                <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1 rounded-xl border border-white/15">
+                  <button 
+                    onClick={() => goToPdfPage(docPdfPage - 1)} 
+                    disabled={docPdfPage <= 1} 
+                    className="p-1 disabled:opacity-30 hover:bg-white/10 rounded-lg transition-colors text-white"
+                    title="หน้าก่อนหน้า"
+                  >
+                    <ChevronLeft size={18}/>
+                  </button>
+
+                  <div className="flex items-center gap-1 text-xs font-bold text-white">
+                    <span>หน้า</span>
+                    <input 
+                      type="number"
+                      min={1}
+                      max={docPdfNumPages || 1}
+                      value={docPdfInputPage}
+                      onChange={(e) => setDocPdfInputPage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const num = parseInt(docPdfInputPage, 10);
+                          if (!isNaN(num)) goToPdfPage(num);
+                        }
+                      }}
+                      onBlur={() => {
+                        const num = parseInt(docPdfInputPage, 10);
+                        if (!isNaN(num)) goToPdfPage(num);
+                        else setDocPdfInputPage(String(docPdfPage));
+                      }}
+                      className="w-12 text-center py-0.5 px-1 bg-white/20 border border-white/30 rounded-md text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      title="พิมพ์เลขหน้าแล้วกด Enter เพื่อข้ามหน้า"
+                    />
+                    <span>/ {docPdfNumPages || 1}</span>
+                  </div>
+
+                  <button 
+                    onClick={() => goToPdfPage(docPdfPage + 1)} 
+                    disabled={docPdfPage >= docPdfNumPages} 
+                    className="p-1 disabled:opacity-30 hover:bg-white/10 rounded-lg transition-colors text-white"
+                    title="หน้าถัดไป"
+                  >
+                    <ChevronRight size={18}/>
+                  </button>
+                </div>
+              )}
+
+              {docImageBase64 && !docPdfFile && (
+                <div className="flex items-center gap-1 bg-white/10 px-2 py-1 rounded-xl border border-white/15">
+                  <button
+                    onClick={() => setDocScale(s => Math.min(s + 0.25, 5))}
+                    className="p-1 hover:bg-white/10 text-white rounded-lg transition-colors"
+                    title="ซูมเข้า"
+                  >
+                    <ZoomIn size={16} />
+                  </button>
+                  <span className="text-xs font-mono font-bold text-white min-w-[38px] text-center">
+                    {Math.round(docScale * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setDocScale(s => Math.max(s - 0.25, 0.5))}
+                    className="p-1 hover:bg-white/10 text-white rounded-lg transition-colors"
+                    title="ซูมออก"
+                  >
+                    <ZoomOut size={16} />
+                  </button>
+                  <button
+                    onClick={() => { setDocScale(1); setDocPan({ x: 0, y: 0 }); }}
+                    className="p-1 hover:bg-white/10 text-gray-300 rounded-lg transition-colors"
+                    title="รีเซ็ตขนาด"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+              )}
+
+              {/* Close Fullscreen Button */}
+              <button
+                onClick={() => setIsPdfFullscreen(false)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-colors shrink-0"
+                title="ออกเต็มจอ"
+              >
+                <X size={16} />
+                <span>ออกเต็มจอ</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Fullscreen Body Content */}
+          <div className="flex-1 w-full overflow-auto p-4 flex flex-col items-center justify-start scrollbar-thin scrollbar-thumb-white/20">
+            {docPdfFile ? (
+              <div className="w-full flex flex-col items-center justify-start">
+                <Document
+                  file={docPdfFile}
+                  onLoadSuccess={({ numPages }) => {
+                    setDocPdfNumPages(numPages);
+                    setDocPdfInputPage(String(docPdfPage));
+                  }}
+                  loading={<div className="text-white/60 py-20 font-medium">กำลังโหลดเอกสาร PDF...</div>}
+                >
+                  <Page 
+                    pageNumber={docPdfPage} 
+                    renderTextLayer={false} 
+                    renderAnnotationLayer={false} 
+                    onRenderSuccess={capturePdfPageForAI}
+                    className="shadow-2xl rounded-xl overflow-hidden border border-white/20 mb-8" 
+                    width={Math.min(window.innerWidth * 0.94, 1100)} 
+                  />
+                </Document>
+              </div>
+            ) : (
+              <div className="w-full flex-1 flex flex-col items-center justify-center relative overflow-hidden min-h-[400px]">
+                <img 
+                  src={docImageBase64 || ''} 
+                  alt="Uploaded Doc Fullscreen" 
+                  className="max-w-[95vw] max-h-[85vh] object-contain rounded-xl shadow-2xl transition-transform duration-100"
+                  style={{ 
+                    transform: `scale(${docScale}) translate(${docPan.x}px, ${docPan.y}px)`,
+                    cursor: isDraggingDoc ? 'grabbing' : 'grab'
+                  }}
+                  onMouseDown={(e) => {
+                    setIsDraggingDoc(true);
+                    setDragStart({ x: e.clientX - docPan.x, y: e.clientY - docPan.y });
+                  }}
+                  onMouseMove={(e) => {
+                    if (!isDraggingDoc) return;
+                    setDocPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+                  }}
+                  onMouseUp={() => setIsDraggingDoc(false)}
+                  onMouseLeave={() => setIsDraggingDoc(false)}
+                  onWheel={(e) => {
+                    e.preventDefault();
+                    const scaleAmount = e.deltaY > 0 ? 0.9 : 1.1;
+                    setDocScale(prev => Math.max(0.5, Math.min(prev * scaleAmount, 5)));
+                  }}
+                />
+                {docOverlayText && (
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-2xl w-[90%] bg-slate-900/90 border border-yellow-400/40 text-yellow-300 p-4 rounded-2xl shadow-xl text-xs sm:text-sm font-medium backdrop-blur-md">
+                    {docOverlayText}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Insufficient Credits Alert Modal */}
       <InsufficientCreditsModal

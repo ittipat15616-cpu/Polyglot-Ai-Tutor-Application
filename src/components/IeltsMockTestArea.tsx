@@ -379,41 +379,51 @@ const WRITING_SPECIFIC_PAGES: number[] = [1, 3];
       )}
 
       {/* Top Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between bg-white px-6 py-4 rounded-t-2xl border-b border-gray-200 gap-4">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setActiveSkill(null)} 
-            className="text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            <ChevronLeft size={24} />
-          </button>
-          <h2 className="text-xl font-bold text-gray-900 capitalize">{normalizedExamId.replace(/_/g, ' ')} - {activeSkill}</h2>
+      <div className="flex flex-col bg-white px-4 sm:px-6 py-3 sm:py-4 rounded-t-2xl border-b border-gray-200 gap-2.5 sm:gap-3">
+        <div className="flex items-center justify-between w-full gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button 
+              onClick={() => setActiveSkill(null)} 
+              className="p-1 text-gray-400 hover:text-gray-800 transition-colors shrink-0"
+              title="ย้อนกลับ"
+            >
+              <ChevronLeft size={22} />
+            </button>
+            <h2 className="text-sm sm:text-lg font-bold text-gray-900 capitalize truncate max-w-[150px] sm:max-w-xs md:max-w-none">
+              {normalizedExamId.replace(/_/g, ' ')} - {activeSkill}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <div className={`flex items-center gap-1.5 font-mono text-xs sm:text-base font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-gray-50 border border-gray-200 ${isLowTime ? 'text-red-600 border-red-200 animate-pulse' : 'text-gray-800'}`}>
+              <Clock size={16} />
+              <span>{formatTime(timeLeft)}</span>
+            </div>
+            <button 
+              onClick={confirmSubmit}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors flex items-center gap-1.5 shadow-xs shrink-0"
+            >
+              <Send size={15} />
+              <span>ส่งข้อสอบ</span>
+            </button>
+          </div>
         </div>
         
+        {/* Dedicated Audio Player Bar (Guaranteed full width on mobile) */}
         {hasAudio && activeSkill === 'listening' && (
-          <div id="tutorial-mock-audio-play" className="flex items-center gap-4 bg-indigo-50 px-4 py-2 rounded-full shadow-inner flex-1 max-w-2xl justify-center">
-            <span className="text-sm font-bold text-indigo-900 whitespace-nowrap">{audioLabel}</span>
+          <div id="tutorial-mock-audio-play" className="w-full bg-indigo-50/90 border border-indigo-100 px-3 sm:px-4 py-2 rounded-xl flex items-center gap-2 sm:gap-3 shadow-xs">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Headphones size={16} className="text-indigo-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-bold text-indigo-900 whitespace-nowrap">{audioLabel}:</span>
+            </div>
             <audio 
               controls 
-              className="w-full max-w-[300px] h-8 outline-none" 
+              className="w-full h-8 outline-none flex-1 min-w-0" 
               src={currentAudioUrl}
               key={currentAudioUrl}
             />
           </div>
         )}
-
-        <div className="flex items-center gap-6">
-          <div className={`flex items-center gap-2 font-mono text-xl font-bold ${isLowTime ? 'text-red-600 animate-pulse' : 'text-gray-800'}`}>
-            <Clock size={24} />
-            {formatTime(timeLeft)}
-          </div>
-          <button 
-            onClick={confirmSubmit}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-colors flex items-center gap-2"
-          >
-            <Send size={18} /> ส่งข้อสอบ
-          </button>
-        </div>
       </div>
 
       {/* Speaking specific layout */}

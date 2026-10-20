@@ -499,11 +499,13 @@ function FlashcardPlayer({
             
             {/* Ask AI Button */}
             <button 
+              id="tutorial-flashcard-ask-ai"
               onClick={() => onAskAI?.(currentWord.word)}
-              className="absolute top-4 left-4 p-2 bg-purple-50 text-purple-600 rounded-full hover:bg-purple-600 hover:text-white transition-colors"
-              title="ถามติวเตอร์ AI"
+              className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full hover:from-purple-600 hover:to-indigo-700 shadow-sm transition-all hover:scale-105 active:scale-95 text-xs font-bold"
+              title="ถามติวเตอร์ AI (เปิดสายคอลเพื่อสอนคำนี้ทันที)"
             >
-              <Bot size={20} />
+              <Bot size={16} />
+              <span className="hidden sm:inline">ถาม AI ติวเตอร์</span>
             </button>
 
             {/* SAVE BUTTONS: "ยังจำไม่ได้" & "จำได้แล้ว" (SAVE ONLY - DOES NOT GO TO NEXT CARD) */}
@@ -859,6 +861,7 @@ export default function FlashcardsArea({ activeLang, onAskAI }: { activeLang: st
         allLevelVocab={selectedLevelData}
         onBack={() => { setSelectedLevel(null); setDirectLaunch(null); }}
         directLaunch={directLaunch}
+        onAskAI={onAskAI}
       />
     );
   }

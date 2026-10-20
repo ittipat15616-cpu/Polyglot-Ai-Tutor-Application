@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, getDocs, doc, getDoc, setDoc, query, orderBy } from 'firebase/firestore';
-import { Shield, Users, RefreshCw, Coins, Calendar, CheckCircle, Lock, Crown, Star, RotateCcw, Clock } from 'lucide-react';
+import { Shield, Users, RefreshCw, Coins, Calendar, CheckCircle, Lock, Crown, Star } from 'lucide-react';
 import { UserSubscriptionState, TIER_CONFIGS, isAdminEmail, isSuperAdminEmail } from '../types/subscription';
-import { getEffectiveSubscriptionState, resetAllNonSuperAdminPurchasedCredits, setAllUsersToTestingPlan } from '../services/subscriptionService';
+import { getEffectiveSubscriptionState } from '../services/subscriptionService';
 
 interface UserData {
   uid: string;
@@ -36,8 +36,6 @@ export default function AdminDashboardArea() {
   const [showInput, setShowInput] = useState(false);
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [resetSuccessMsg, setResetSuccessMsg] = useState('');
-  const [isResettingCredits, setIsResettingCredits] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -104,40 +102,19 @@ export default function AdminDashboardArea() {
           }
         }
 
-        // Auto-enforce: All regular accounts except Owner and Admins must be Testing Plan (14 days) and 0 purchased credits
+        // Default initialization for regular accounts if they don't have a record yet
         if (!isSuperAdmin && !isAdmin) {
-          let needsSync = false;
           if (!userSubState) {
             userSubState = {
-              tier: 'TESTING',
+              tier: 'FREE',
               dailyCredits: 0,
               maxDailyCredits: 0,
               purchasedCredits: 0,
-              expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
-              isTrial: true,
-              hasReceivedTestingTrial: true,
+              expiresAt: null,
+              isTrial: false,
               chatMessageCount: 0,
               callSecondsCount: 0,
             };
-            needsSync = true;
-          } else {
-            const isAbnormalLifetime = userSubState.expiresAt && (userSubState.expiresAt - Date.now() > 30 * 24 * 60 * 60 * 1000);
-            if (userSubState.tier === 'ULTRA' || isAbnormalLifetime) {
-              userSubState.tier = 'TESTING';
-              userSubState.expiresAt = Date.now() + 14 * 24 * 60 * 60 * 1000;
-              userSubState.isTrial = true;
-              userSubState.hasReceivedTestingTrial = true;
-              userSubState.dailyCredits = 0;
-              userSubState.maxDailyCredits = 0;
-              needsSync = true;
-            }
-            if ((userSubState.purchasedCredits || 0) > 0) {
-              userSubState.purchasedCredits = 0;
-              needsSync = true;
-            }
-          }
-
-          if (needsSync) {
             await setDoc(subDocRef, { ...userSubState, updatedAt: Date.now() }, { merge: true }).catch(() => {});
           }
         }
@@ -163,42 +140,6 @@ export default function AdminDashboardArea() {
       setErrorMsg(`Error loading data: ${e.message}`);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSetAllTestingPlan = async () => {
-    if (!window.confirm('คุณต้องการปรับทุกบัญชีในระบบให้เป็น Testing Plan (หมดอายุในอีก 14 วันข้างหน้านับจากตอนนี้) หรือไม่?\n\n* บัญชีของเจ้าของ (Owner: ittipat15616@gmail.com) และแอดมินทุกคนจะได้รับการยกเว้นและคงสิทธิ์เดิมไว้ 100%')) {
-      return;
-    }
-    setIsResettingCredits(true);
-    setErrorMsg('');
-    setResetSuccessMsg('');
-    try {
-      const result = await setAllUsersToTestingPlan();
-      setResetSuccessMsg(`ปรับทุกบัญชีเป็น Testing Plan (14 วัน) เรียบร้อยแล้ว สำหรับ ${result.updatedCount} บัญชี (จากผู้ใช้ทั้งหมด ${result.totalScanned} บัญชี) โดยคงสิทธิ์ของเจ้าของและแอดมินไว้สมบูรณ์`);
-      await loadData();
-    } catch (e: any) {
-      setErrorMsg(`เกิดข้อผิดพลาดในการปรับแพ็กเกจ: ${e.message}`);
-    } finally {
-      setIsResettingCredits(false);
-    }
-  };
-
-  const handleResetAllCredits = async () => {
-    if (!window.confirm('คุณต้องการรีเซ็ตเครดิตเติมเอง (Purchased Credits) ของทุกบัญชีในระบบให้เหลือ 0 หรือไม่? (บัญชี ittipat15616@gmail.com จะได้รับการยกเว้นและคงเครดิตไว้ตามเดิม)')) {
-      return;
-    }
-    setIsResettingCredits(true);
-    setErrorMsg('');
-    setResetSuccessMsg('');
-    try {
-      const result = await resetAllNonSuperAdminPurchasedCredits();
-      setResetSuccessMsg(`รีเซ็ตเครดิตเติมเองเหลือ 0 เรียบร้อยแล้ว สำหรับ ${result.updatedCount} บัญชี (จากผู้ใช้ทั้งหมด ${result.totalScanned} บัญชี) โดยคงเครดิตของ ittipat15616@gmail.com ไว้สมบูรณ์`);
-      await loadData();
-    } catch (e: any) {
-      setErrorMsg(`เกิดข้อผิดพลาดในการรีเซ็ตเครดิต: ${e.message}`);
-    } finally {
-      setIsResettingCredits(false);
     }
   };
 
@@ -300,26 +241,6 @@ export default function AdminDashboardArea() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          <button
-            type="button"
-            onClick={handleSetAllTestingPlan}
-            disabled={isResettingCredits || isLoading}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
-            title="ปรับทุกบัญชีในระบบเป็น Testing Plan (14 วันนับจากนี้) ยกเว้น Owner และ Admins"
-          >
-            <Clock size={14} className={isResettingCredits ? 'animate-spin' : ''} />
-            <span>ปรับทุกบัญชีเป็น Testing Plan (14 วัน)</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleResetAllCredits}
-            disabled={isResettingCredits || isLoading}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
-            title="รีเซ็ตเครดิตเติมเองของผู้ใช้ทุกคนให้เหลือ 0 ยกเว้น ittipat15616@gmail.com"
-          >
-            <RotateCcw size={14} className={isResettingCredits ? 'animate-spin' : ''} />
-            <span>{isResettingCredits ? 'กำลังรีเซ็ต...' : 'รีเซ็ตเครดิตเติมเองเหลือ 0 (ยกเว้น Owner)'}</span>
-          </button>
           <div className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl border border-emerald-200 flex items-center gap-2">
             <Coins size={18} />
             <span className="font-semibold text-sm">ยอดรวมเดือนนี้: ฿{totalRevenue.toLocaleString()}</span>
@@ -336,17 +257,6 @@ export default function AdminDashboardArea() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        {resetSuccessMsg && (
-          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-medium flex items-center justify-between gap-3 shadow-2xs">
-            <span>✅ {resetSuccessMsg}</span>
-            <button
-              onClick={() => setResetSuccessMsg('')}
-              className="text-emerald-600 hover:text-emerald-900 text-xs font-bold underline shrink-0 cursor-pointer"
-            >
-              ปิด
-            </button>
-          </div>
-        )}
         {errorMsg && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl">
             <h3 className="font-bold">เกิดข้อผิดพลาดในการดึงข้อมูล</h3>
@@ -415,8 +325,8 @@ export default function AdminDashboardArea() {
                                 ULTRA (Owner VIP)
                               </span>
                             ) : isAdminUser ? (
-                              <span className="bg-gradient-to-r from-purple-100 to-indigo-100 text-indigo-900 border border-indigo-300 px-2 py-1 rounded-md text-xs font-bold">
-                                ULTRA (Admin)
+                              <span className="bg-gradient-to-r from-blue-100 to-indigo-100 text-indigo-900 border border-blue-300 px-2 py-1 rounded-md text-xs font-bold">
+                                STARTER (Admin)
                               </span>
                             ) : (
                               getTierBadge(u.subState?.tier || 'FREE')

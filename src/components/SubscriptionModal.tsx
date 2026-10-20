@@ -10,7 +10,7 @@ import {
   SubscriptionTier, TIER_CONFIGS, TOPUP_OPTIONS, PROMPTPAY_CONFIG, UserSubscriptionState, isAdminEmail, isSuperAdminEmail
 } from '../types/subscription';
 import {
-  loadUserSubscription, upgradeTier, addTopupCredits, getTotalCredits
+  loadUserSubscription, upgradeTier, addTopupCredits, getTotalCredits, setOwnerTestCredits
 } from '../services/subscriptionService';
 import CountdownTimer from './CountdownTimer';
 import { verifyPaymentSlip } from '../services/slipVerification';
@@ -359,6 +359,73 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                   <span className="text-xs text-slate-500">⚡ เครดิตแพ็กเกจจะรีเฟรชกลับมาเต็มทุกๆ 10 วัน</span>
                 </div>
 
+                {/* Owner Simulation Panel (Only visible to ittipat15616@gmail.com) */}
+                {isSuperAdmin && (
+                  <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-300 shadow-sm">
+                    <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center font-black text-lg shadow-sm shrink-0">
+                          👑
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-sm text-slate-900">แผงควบคุมจำลองแพลน (Owner Simulator)</span>
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300">
+                              Owner Only
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                            คุณสามารถกดปุ่ม <span className="font-bold text-amber-800">"👑 สลับมาใช้แพลนนี้ทันที"</span> ที่การ์ดใดก็ได้ เพื่อทดสอบประสบการณ์เสมือนผู้ใช้จริงของแพลนนั้นๆ (เช่น หน้าที่ถูกล็อค, การหักเครดิต, เรตโทร BYOK)
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newState = await setOwnerTestCredits(0, 0);
+                            setSubState(newState);
+                            if (onSubscriptionUpdated) onSubscriptionUpdated(newState);
+                            soundFx.playCorrect('MATCH');
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 font-bold text-xs transition-all shadow-xs cursor-pointer"
+                          title="ตั้งค่าเครดิตเป็น 0 เพื่อทดสอบกรณีเครดิตหมด"
+                        >
+                          ⚡ ทดสอบ 0 เครดิต
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newState = await setOwnerTestCredits(10000);
+                            setSubState(newState);
+                            if (onSubscriptionUpdated) onSubscriptionUpdated(newState);
+                            soundFx.playVictory();
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 font-bold text-xs transition-all shadow-xs cursor-pointer"
+                          title="เติมเครดิต 10,000 เครดิตสำหรับทดสอบ"
+                        >
+                          ⚡ เติม 10,000 เครดิต
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const newState = await upgradeTier('ULTRA');
+                            await setOwnerTestCredits(10000);
+                            setSubState(newState);
+                            if (onSubscriptionUpdated) onSubscriptionUpdated(newState);
+                            soundFx.playVictory();
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-extrabold text-xs transition-all flex items-center gap-1 shadow-sm cursor-pointer"
+                          title="รีเซ็ตกลับเป็น Ultra Plan ตลอดชีพ"
+                        >
+                          <Crown size={12} />
+                          <span>รีเซ็ตกลับ Ultra Plan</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* BYOK Promotion Banner */}
                 <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 text-white flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm border border-indigo-800/40">
                   <div className="flex items-center gap-3">
@@ -388,7 +455,7 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(Object.keys(TIER_CONFIGS) as SubscriptionTier[]).filter(k => k !== 'TESTING').map((tierKey) => {
+                  {(Object.keys(TIER_CONFIGS) as SubscriptionTier[]).filter(k => isSuperAdmin || k !== 'TESTING').map((tierKey) => {
                     const cfg = TIER_CONFIGS[tierKey];
                     const isCurrent = subState?.tier === tierKey;
 
@@ -402,10 +469,16 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                       >
                         {isCurrent && (
                           <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl shadow flex items-center gap-1">
-                            แพ็กเกจปัจจุบัน
+                            {isSuperAdmin ? '👑 กำลังจำลองใช้อยู่' : 'แพ็กเกจปัจจุบัน'}
                             {subState?.expiresAt && tierKey !== 'FREE' && (
                               <span className="font-mono text-indigo-200">
-                                ({isAdminEmail(user?.email) ? (
+                                ({isSuperAdmin ? (
+                                  subState.tier === 'ULTRA' ? (
+                                    'ตลอดชีพ'
+                                  ) : (
+                                    <CountdownTimer expiresAt={subState.expiresAt} onExpire={() => loadUserSubscription().then(setSubState)} />
+                                  )
+                                ) : isAdminEmail(user?.email) ? (
                                   'ตลอดชีพ'
                                 ) : (
                                   <CountdownTimer expiresAt={subState.expiresAt} onExpire={() => loadUserSubscription().then(setSubState)} />
@@ -457,10 +530,20 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                               ? 'bg-slate-100 text-slate-500 cursor-default'
                               : (!user && cfg.price !== 0)
                               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg'
+                              : isSuperAdmin
+                              ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-md hover:shadow-lg active:scale-95 cursor-pointer'
+                              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg cursor-pointer'
                           }`}
                         >
-                          {isCurrent ? 'กำลังใช้อยู่' : (cfg.price === 0 && !isSuperAdmin) ? 'ใช้งานฟรี' : !user ? 'กรุณาเข้าสู่ระบบ' : isSuperAdmin ? 'Dev: สลับแพ็กเกจทันที' : `สแกนชำระ ฿${getDiscountedPrice(cfg.price)}`}
+                          {isCurrent
+                            ? (isSuperAdmin ? '👑 กำลังจำลองใช้อยู่' : 'กำลังใช้อยู่')
+                            : (cfg.price === 0 && !isSuperAdmin)
+                            ? 'ใช้งานฟรี'
+                            : !user
+                            ? 'กรุณาเข้าสู่ระบบ'
+                            : isSuperAdmin
+                            ? '👑 สลับมาใช้แพลนนี้ทันที'
+                            : `สแกนชำระ ฿${getDiscountedPrice(cfg.price)}`}
                         </button>
                       </motion.div>
                     );

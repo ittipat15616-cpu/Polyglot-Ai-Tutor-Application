@@ -24,14 +24,29 @@ export function getEffectiveSubscriptionState(
 
   const emailToCheck = targetUserEmail !== undefined ? targetUserEmail : auth.currentUser?.email;
   if (emailToCheck && isSuperAdminEmail(emailToCheck)) {
-    effectiveState.tier = 'ULTRA';
-    effectiveState.expiresAt = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000; // 100 years
-    effectiveState.isTrial = false;
-    return { state: effectiveState, changed: false };
+    // Super Admin (Owner - ittipat15616@gmail.com):
+    // Respect Owner's selected tier so Owner can simulate any plan at any time!
+    effectiveState.tier = effectiveState.tier || 'ULTRA';
+    effectiveState.isTrial = effectiveState.tier === 'TESTING';
+
+    if (effectiveState.tier === 'ULTRA') {
+      effectiveState.expiresAt = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000; // 100 years lifetime access
+      effectiveState.isTrial = false;
+      return { state: effectiveState, changed: false };
+    } else if (effectiveState.tier === 'FREE') {
+      effectiveState.expiresAt = null;
+      effectiveState.dailyCredits = 0;
+      effectiveState.maxDailyCredits = 0;
+      effectiveState.nextCreditResetAt = null;
+      effectiveState.lastCreditResetAt = null;
+      effectiveState.isTrial = false;
+      return { state: effectiveState, changed: false };
+    }
+    // For other tiers (STARTER, BASIC, PLUS, PREMIUM, PRO), continue down to normal 10-day cycle / expiration logic
   } else if (emailToCheck && isAdminEmail(emailToCheck)) {
     // Admin accounts (nongrily@gmail.com, weeranan172550@gmail.com):
-    // Ultra plan (Admin) lifetime access, 0 free daily/cycle credits (must top up themselves)
-    effectiveState.tier = 'ULTRA';
+    // Starter plan (Admin) lifetime access, 0 free daily/cycle credits (must top up themselves)
+    effectiveState.tier = 'STARTER';
     effectiveState.expiresAt = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000; // 100 years lifetime
     effectiveState.isTrial = false;
     effectiveState.dailyCredits = 0;
@@ -261,25 +276,27 @@ export async function loadUserSubscription(): Promise<UserSubscriptionState> {
 
   // Super Admin Initializer & Lifetime Access (ittipat15616@gmail.com)
   if (user && isSuperAdminEmail(user.email)) {
-    state.tier = 'ULTRA';
-    state.expiresAt = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000; // 100 years lifetime access
-    state.isTrial = false;
-    if ((state.purchasedCredits || 0) < 1000) {
-      state.purchasedCredits = Math.max(state.purchasedCredits || 0, 10000);
+    // Preserve whatever tier the Owner selected, default to ULTRA if none set
+    state.tier = state.tier || 'ULTRA';
+    if (state.tier === 'ULTRA' && (!state.expiresAt || (state.expiresAt - Date.now() < 50 * 365 * 24 * 60 * 60 * 1000))) {
+      state.expiresAt = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000; // 100 years lifetime access
     }
-    state.hasReceivedAdminCredits = true;
+    if ((state.purchasedCredits || 0) < 1000 && !state.hasReceivedAdminCredits) {
+      state.purchasedCredits = Math.max(state.purchasedCredits || 0, 10000);
+      state.hasReceivedAdminCredits = true;
+    }
     if (db) {
       const docRef = doc(db, 'users', user.uid, 'subscription', 'current');
       setDoc(docRef, { ...state, updatedAt: Date.now() }, { merge: true }).catch(() => {});
     }
   } else if (user && isAdminEmail(user.email)) {
     // Other Admins (weeranan172550@gmail.com, nongrily@gmail.com):
-    // Ultra plan (Admin) Lifetime access (100 years), all pages accessible,
+    // Starter plan (Admin) Lifetime access (100 years), all pages accessible,
     // NO free credits granted (dailyCredits = 0, must top up themselves),
     // and all Call page features are FREE when using BYOK.
     let needsUpdate = false;
-    if (state.tier !== 'ULTRA') {
-      state.tier = 'ULTRA';
+    if (state.tier !== 'STARTER') {
+      state.tier = 'STARTER';
       needsUpdate = true;
     }
     const lifetimeExpiry = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000;
@@ -482,7 +499,7 @@ export async function deductCredit(
 }
 
 /**
- * Upgrade subscription tier for 30 days
+ * Upgrade subscription tier for 30 days (or simulate any tier for Owner)
  */
 export async function upgradeTier(newTier: SubscriptionTier): Promise<UserSubscriptionState> {
   const state = await loadUserSubscription();
@@ -494,18 +511,46 @@ export async function upgradeTier(newTier: SubscriptionTier): Promise<UserSubscr
 
   state.tier = newTier;
   state.maxDailyCredits = config.dailyCredits;
+  state.dailyCredits = config.dailyCredits;
+  state.lastCreditResetAt = Date.now();
+  state.nextCreditResetAt = config.dailyCredits > 0 ? Date.now() + TEN_DAYS_MS : null;
+  state.chatMessageCount = 0;
+  state.callSecondsCount = 0;
   
-  if (!isSuperAdmin) {
-    state.dailyCredits = config.dailyCredits;
-    state.lastCreditResetAt = Date.now();
-    state.nextCreditResetAt = config.dailyCredits > 0 ? Date.now() + TEN_DAYS_MS : null;
-    state.chatMessageCount = 0;
-    state.callSecondsCount = 0;
+  if (newTier === 'ULTRA' && isSuperAdmin) {
+    state.expiresAt = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000; // 100 years lifetime for Owner
+    state.isTrial = false;
+  } else if (newTier === 'TESTING') {
+    state.expiresAt = Date.now() + 14 * 24 * 60 * 60 * 1000;
+    state.isTrial = true;
+  } else if (newTier === 'FREE') {
+    state.expiresAt = null;
+    state.isTrial = false;
+    state.dailyCredits = 0;
+    state.maxDailyCredits = 0;
+    state.nextCreditResetAt = null;
+  } else {
+    state.expiresAt = Date.now() + thirtyDaysMs;
+    state.isTrial = false;
   }
-  
-  state.expiresAt = newTier === 'FREE' ? null : Date.now() + thirtyDaysMs;
-  state.isTrial = false;
 
+  await saveUserSubscription(state);
+  return { ...state };
+}
+
+/**
+ * Helper for Owner (ittipat15616@gmail.com) to quickly set testing credits (e.g. 0 to test empty balance, or 10000 for VIP)
+ */
+export async function setOwnerTestCredits(purchasedCredits: number, dailyCredits?: number): Promise<UserSubscriptionState> {
+  const user = auth.currentUser;
+  if (!user || !isSuperAdminEmail(user.email)) {
+    throw new Error('Unauthorized: only the Owner can set test credits');
+  }
+  const state = await loadUserSubscription();
+  state.purchasedCredits = Math.max(0, purchasedCredits);
+  if (dailyCredits !== undefined) {
+    state.dailyCredits = Math.max(0, dailyCredits);
+  }
   await saveUserSubscription(state);
   return { ...state };
 }
@@ -651,7 +696,7 @@ export async function syncAdminSubscriptions(): Promise<void> {
         const existingData = subSnap.exists() ? (subSnap.data() as Partial<UserSubscriptionState>) : {};
 
         const adminState: Partial<UserSubscriptionState> = {
-          tier: 'ULTRA',
+          tier: 'STARTER',
           expiresAt: lifetimeExpiry,
           isTrial: false,
           dailyCredits: 0,
@@ -662,7 +707,7 @@ export async function syncAdminSubscriptions(): Promise<void> {
         };
 
         await setDoc(subDocRef, { ...adminState, updatedAt: now }, { merge: true });
-        console.log(`[Admin Setup] Synchronized ${email} to Ultra plan (Lifetime, 0 free credits)`);
+        console.log(`[Admin Setup] Synchronized ${email} to Starter plan (Lifetime, 0 free credits)`);
       }
     }
   } catch (err) {

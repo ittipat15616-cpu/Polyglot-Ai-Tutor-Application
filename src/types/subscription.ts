@@ -5,7 +5,9 @@ export const SUPER_ADMIN_EMAIL = 'ittipat15616@gmail.com';
 export const ADMIN_EMAILS: string[] = [
   'ittipat15616@gmail.com',
   'weeranan172550@gmail.com',
-  'nongrily@gmail.com'
+  'nongrily@gmail.com',
+  'mimi.benyapa@gmail.com',
+  'tpimlapat69@gmail.com'
 ];
 
 export function isAdminEmail(email?: string | null): boolean {
@@ -50,14 +52,15 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     name: 'Free Plan',
     price: 0,
     dailyCredits: 0,
-    description: 'เข้าถึงคลังศัพท์ บทเรียน และข้อสอบเฉพาะภาษาจีนฟรี',
+    description: 'เข้าถึงคลังคำศัพท์ แฟลชการ์ด คัดศัพท์ และสอบศัพท์ฟรีทั้งภาษาจีนและอังกฤษ',
     badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
-    allowedTabs: ['lessons', 'exercises', 'exams', 'contact', 'call'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'exercises', 'exams', 'contact', 'call'],
     features: [
-      'เข้าถึงคลังคำศัพท์และบทเรียนภาษาจีนฟรี (CN)',
-      'ทำข้อสอบภาษาจีนฟรี (CN)',
+      'เข้าถึงคลังคำศัพท์ แฟลชการ์ด คัดศัพท์ และสอบศัพท์ฟรี (ทั้งภาษาจีนและอังกฤษ)',
+      'ทำบทเรียนและข้อสอบภาษาจีนฟรี (CN)',
+      'สอบศัพท์ใช้ 1 เครดิตในการส่งตรวจคำตอบ',
       'เข้าถึงหน้าคอลได้ (ใช้งาน AI เมื่อมีเครดิต)',
-      'ล็อคแฟลชการ์ด คัดศัพท์ สอบศัพท์ เกมคำศัพท์ และเนื้อหาภาษาอังกฤษ'
+      'ล็อคเกมคำศัพท์ ระบบจำลองสอบ และบทเรียน/ข้อสอบภาษาอังกฤษ'
     ]
   },
   STARTER: {

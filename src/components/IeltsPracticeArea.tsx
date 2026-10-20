@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Maximize2, X, Headphones, FileText, Edit3, Mic, Download } from 'lucide-react';
 import { getFirebaseStorageUrl } from '../utils/firebaseStorage';
 import DocumentGallery from './DocumentGallery';
@@ -134,73 +135,107 @@ export default function IeltsPracticeArea({ examId, skill, onBack }: IeltsPracti
     }
   };
 
-  const AudioPlayer = () => {
+  const AudioPlayer = ({ compact = false }: { compact?: boolean }) => {
     if (!hasAudio) return null;
     return (
-      <div id="tutorial-exam-audio-play" className="flex flex-col md:flex-row items-center gap-4 bg-indigo-50 px-6 py-3 rounded-full shadow-inner">
-        <span className="text-sm font-bold text-indigo-900 min-w-[140px] text-center md:text-left">{audioLabel}</span>
+      <div id="tutorial-exam-audio-play" className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-4 bg-indigo-50/90 border border-indigo-100 px-4 py-2 sm:py-2.5 rounded-2xl shadow-xs w-full ${compact ? 'max-w-xl' : 'max-w-2xl'}`}>
+        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+          <Headphones size={16} className="text-indigo-600 shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-indigo-900 whitespace-nowrap">{audioLabel}</span>
+        </div>
         <audio 
           controls 
-          className="w-full md:w-[400px] h-10 outline-none" 
+          className="w-full h-8 outline-none flex-1" 
           src={currentAudioUrl}
           key={currentAudioUrl} // force reload on url change
         >
           Your browser does not support the audio element.
         </audio>
-        <div className="flex gap-2">
-          {activeSkill.toLowerCase() === 'speaking' && speakingTrackIdx > 0 && (
-            <button
-              onClick={handlePrevSpeakingTrack}
-              className="flex items-center gap-1 bg-indigo-100 text-indigo-700 px-3 py-2 rounded-full font-medium hover:bg-indigo-200 transition-colors shadow-sm whitespace-nowrap"
-            >
-              <ChevronLeft size={18} /> ย้อนกลับ
-            </button>
-          )}
-          {activeSkill.toLowerCase() === 'speaking' && speakingTrackIdx < SPEAKING_TRACKS.length - 1 && (
-            <button
-              onClick={handleNextSpeakingTrack}
-              className="flex items-center gap-1 bg-indigo-600 text-white px-4 py-2 rounded-full font-medium hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap"
-            >
-              ถัดไป <ChevronRight size={18} />
-            </button>
-          )}
-        </div>
+        {activeSkill.toLowerCase() === 'speaking' && (
+          <div className="flex gap-1.5 shrink-0 self-end sm:self-auto">
+            {speakingTrackIdx > 0 && (
+              <button
+                onClick={handlePrevSpeakingTrack}
+                className="flex items-center gap-1 bg-white text-indigo-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-indigo-200 hover:bg-indigo-50 transition-colors shadow-xs"
+              >
+                <ChevronLeft size={14} /> ก่อนหน้า
+              </button>
+            )}
+            {speakingTrackIdx < SPEAKING_TRACKS.length - 1 && (
+              <button
+                onClick={handleNextSpeakingTrack}
+                className="flex items-center gap-1 bg-indigo-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors shadow-xs"
+              >
+                ถัดไป <ChevronRight size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   };
 
   if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
-        {/* Floating Toolbar for controls */}
-        <div className="absolute top-4 right-4 z-[60] flex flex-col items-center gap-3">
-          
-          <button 
-            onClick={() => setIsFullscreen(false)} 
-            title="ออกเต็มจอ"
-            className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200"
-          >
-             <X size={24} />
-          </button>
-        </div>
+    return createPortal(
+      <div className="fixed inset-0 z-[999999] bg-gray-100 flex flex-col h-screen w-screen overflow-hidden">
+        {/* Locked Top Tab Header — strictly locked at the top, nothing overlaps */}
+        <header className="shrink-0 z-10 bg-white border-b border-gray-200 shadow-md px-4 sm:px-6 py-3 sm:py-4 flex flex-col md:flex-row md:items-center justify-between gap-3 pt-[max(env(safe-area-inset-top),20px)]">
+          <div className="flex items-center justify-between w-full md:w-auto gap-3 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl shrink-0">
+                <Headphones size={20} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+                  {normalizedExamId.replace(/_/g, ' ')}
+                </h2>
+                <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wide">
+                  {activeSkill} (โหมดเต็มจอ)
+                </span>
+              </div>
+            </div>
 
-        {hasAudio && (
-          <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-2xl px-4">
-             <div className="bg-white/95 backdrop-blur-md rounded-full shadow-lg border border-gray-200 p-1">
-               <AudioPlayer />
-             </div>
+            {/* Mobile Exit Button on the top row */}
+            <button 
+              onClick={() => setIsFullscreen(false)} 
+              title="ออกเต็มจอ"
+              className="md:hidden flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs border border-rose-200 shadow-xs transition-colors shrink-0"
+            >
+              <X size={16} />
+              <span>ออกเต็มจอ</span>
+            </button>
           </div>
-        )}
 
-        <div className="flex-1 w-full overflow-hidden relative">
+          {hasAudio && (
+            <div className="w-full md:flex-1 md:max-w-xl md:mx-4">
+              <AudioPlayer compact={true} />
+            </div>
+          )}
+
+          {/* Desktop Exit Button */}
+          <div className="hidden md:flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => setIsFullscreen(false)} 
+              title="ออกเต็มจอ"
+              className="flex items-center gap-1.5 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-sm border border-rose-200 shadow-xs transition-colors"
+            >
+              <X size={18} />
+              <span>ออกเต็มจอ</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Main Document Content Area — completely below the locked top header */}
+        <main className="flex-1 w-full overflow-hidden relative">
           <DocumentGallery 
             type="ielts" 
             folder={`${normalizedExamId}/${activeSkill.charAt(0).toUpperCase() + activeSkill.slice(1).toLowerCase()}_Full`}
             prefix="page" 
             enableAnnotation={true}
           />
-        </div>
-      </div>
+        </main>
+      </div>,
+      document.body
     );
   }
 
@@ -213,18 +248,18 @@ export default function IeltsPracticeArea({ examId, skill, onBack }: IeltsPracti
         <ChevronLeft size={20} /> ย้อนกลับ
       </button>
       
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6 flex flex-col items-center justify-between gap-4">
-        <div className="w-full flex justify-between items-center mb-2">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">{normalizedExamId.replace(/_/g, ' ')}</h2>
-            <p className="text-gray-500 capitalize">โหมดฝึกทำข้อสอบ (Practice Mode) - {activeSkill}</p>
+      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 mb-6 flex flex-col items-center justify-between gap-4">
+        <div className="w-full flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-1">
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{normalizedExamId.replace(/_/g, ' ')}</h2>
+            <p className="text-gray-500 text-xs sm:text-sm capitalize">โหมดฝึกทำข้อสอบ (Practice Mode) - {activeSkill}</p>
           </div>
           <button
             id="tutorial-exam-fullscreen-btn"
             onClick={() => setIsFullscreen(true)}
-            className="flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-lg font-medium transition-colors"
+            className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors shrink-0 self-start sm:self-auto shadow-xs"
           >
-            <Maximize2 size={20} /> ดูแบบเต็มจอ
+            <Maximize2 size={16} /> <span>ดูแบบเต็มจอ</span>
           </button>
         </div>
         

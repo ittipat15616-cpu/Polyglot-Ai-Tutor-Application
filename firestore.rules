@@ -8,7 +8,7 @@ service cloud.firestore {
     // Helpers
     function isSignedIn() { return request.auth != null; }
     function isOwner(userId) { return request.auth.uid == userId; }
-    function isAdmin() { return request.auth != null && 'email' in request.auth.token && (request.auth.token.email == 'ittipat15616@gmail.com' || request.auth.token.email == 'weeranan172550@gmail.com' || request.auth.token.email == 'nongrily@gmail.com'); }
+    function isAdmin() { return request.auth != null && 'email' in request.auth.token && (request.auth.token.email == 'ittipat15616@gmail.com' || request.auth.token.email == 'weeranan172550@gmail.com' || request.auth.token.email == 'nongrily@gmail.com' || request.auth.token.email == 'mimi.benyapa@gmail.com' || request.auth.token.email == 'tpimlapat69@gmail.com'); }
     function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }

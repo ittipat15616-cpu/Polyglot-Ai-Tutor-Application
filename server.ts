@@ -3,6 +3,7 @@ dotenv.config({ path: [".env.local", ".env"] });
 import express from "express";
 import path from "path";
 import http from "http";
+import https from "https";
 import fs from "fs";
 import os from "os";
 import { EdgeTTS } from "node-edge-tts";
@@ -611,6 +612,59 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
     }
   });
 
+  function fetchGoogleTTSChunk(text: string, langCode: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(langCode)}&client=tw-ob`;
+      const req = https.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      }, res => {
+        if (res.statusCode !== 200) {
+          return reject(new Error(`Google TTS HTTP ${res.statusCode}`));
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', d => chunks.push(d));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      });
+      req.on('error', reject);
+      req.setTimeout(8000, () => {
+        req.destroy();
+        reject(new Error('Google TTS request timeout'));
+      });
+    });
+  }
+
+  async function synthesizeWithGoogleTTS(text: string, langCode: string): Promise<Buffer> {
+    const clean = text.trim();
+    if (!clean) return Buffer.alloc(0);
+
+    if (clean.length <= 180) {
+      return await fetchGoogleTTSChunk(clean, langCode);
+    }
+
+    const parts = clean.split(/([.,!?;:\n。！？；：\s]+)/);
+    const chunks: string[] = [];
+    let current = '';
+
+    for (const part of parts) {
+      if ((current + part).length > 180) {
+        if (current.trim()) chunks.push(current.trim());
+        current = part;
+      } else {
+        current += part;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+    if (chunks.length === 0) chunks.push(clean.slice(0, 180));
+
+    const buffers: Buffer[] = [];
+    for (const chunk of chunks) {
+      buffers.push(await fetchGoogleTTSChunk(chunk, langCode));
+    }
+    return Buffer.concat(buffers);
+  }
+
   app.post("/api/synthesize", async (req, res) => {
     try {
       const { text, lang, voice: customVoice, rate: customRate } = req.body;
@@ -621,45 +675,60 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
       // Default English voice to cool, clear male voice: en-US-ChristopherNeural
       let voice = 'en-US-ChristopherNeural';
       let edgeLang = 'en-US';
+      let googleLang = 'en';
+
       if (lang === 'CN' || lang === 'ZH' || lang === 'Chinese') {
           voice = 'zh-CN-XiaoxiaoNeural';
           edgeLang = 'zh-CN';
+          googleLang = 'zh-CN';
       } else if (lang === 'TH' || lang === 'Thai') {
           voice = 'th-TH-NiwatNeural';
           edgeLang = 'th-TH';
+          googleLang = 'th';
       } else if (lang === 'Japanese') {
           voice = 'ja-JP-NanamiNeural';
           edgeLang = 'ja-JP';
+          googleLang = 'ja';
       } else if (lang === 'Korean') {
           voice = 'ko-KR-SunHiNeural';
           edgeLang = 'ko-KR';
+          googleLang = 'ko';
       } else if (lang === 'French') {
           voice = 'fr-FR-DeniseNeural';
           edgeLang = 'fr-FR';
+          googleLang = 'fr';
       } else if (lang === 'Spanish') {
           voice = 'es-ES-ElviraNeural';
           edgeLang = 'es-ES';
+          googleLang = 'es';
       } else if (lang === 'German') {
           voice = 'de-DE-KatjaNeural';
           edgeLang = 'de-DE';
+          googleLang = 'de';
       } else if (lang === 'Italian') {
           voice = 'it-IT-ElsaNeural';
           edgeLang = 'it-IT';
+          googleLang = 'it';
       } else if (lang === 'Russian') {
           voice = 'ru-RU-SvetlanaNeural';
           edgeLang = 'ru-RU';
+          googleLang = 'ru';
       } else if (lang === 'Arabic') {
           voice = 'ar-SA-ZariyahNeural';
           edgeLang = 'ar-SA';
+          googleLang = 'ar';
       } else if (lang === 'Hindi') {
           voice = 'hi-IN-SwaraNeural';
           edgeLang = 'hi-IN';
+          googleLang = 'hi';
       } else if (lang === 'Portuguese') {
           voice = 'pt-BR-FranciscaNeural';
           edgeLang = 'pt-BR';
+          googleLang = 'pt';
       } else if (lang === 'Vietnamese') {
           voice = 'vi-VN-HoaiMyNeural';
           edgeLang = 'vi-VN';
+          googleLang = 'vi';
       }
 
       // If a custom valid voice is requested, use it
@@ -672,26 +741,63 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
         return res.json({ audio: ttsCache.get(cacheKey) });
       }
 
-      const ttsRate = customRate || "default";
+      let audioData: string | null = null;
+      let isEdgeVoice = false;
 
-      const tts = new EdgeTTS({ voice, lang: edgeLang, rate: ttsRate });
-      const tempFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.floor(Math.random()*1000)}.mp3`);
-      await tts.ttsPromise(text, tempFile);
-      const audioData = fs.readFileSync(tempFile, { encoding: 'base64' });
-      fs.unlinkSync(tempFile);
+      // 1. Try EdgeTTS first (with quick retry)
+      try {
+        const ttsRate = customRate || "default";
+        const tts = new EdgeTTS({ voice, lang: edgeLang, rate: ttsRate });
+        const tempFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.floor(Math.random()*1000)}.mp3`);
+        await tts.ttsPromise(text, tempFile);
+        if (fs.existsSync(tempFile)) {
+          audioData = fs.readFileSync(tempFile, { encoding: 'base64' });
+          isEdgeVoice = true;
+          try { fs.unlinkSync(tempFile); } catch (e) {}
+        }
+      } catch (edgeErr: any) {
+        console.warn(`[TTS] EdgeTTS attempt 1 failed (${edgeErr?.message || edgeErr}), retrying...`);
+        try {
+          const tts = new EdgeTTS({ voice, lang: edgeLang, rate: customRate || "default" });
+          const tempFile = path.join(os.tmpdir(), `tts_retry_${Date.now()}_${Math.floor(Math.random()*1000)}.mp3`);
+          await tts.ttsPromise(text, tempFile);
+          if (fs.existsSync(tempFile)) {
+            audioData = fs.readFileSync(tempFile, { encoding: 'base64' });
+            isEdgeVoice = true;
+            try { fs.unlinkSync(tempFile); } catch (e) {}
+          }
+        } catch (retryErr: any) {
+          console.warn(`[TTS] EdgeTTS retry failed (${retryErr?.message || retryErr}), falling back to Google TTS engine...`);
+        }
+      }
+
+      // 2. Seamless fallback to Google TTS engine
+      if (!audioData) {
+        try {
+          const googleBuf = await synthesizeWithGoogleTTS(text, googleLang);
+          if (googleBuf && googleBuf.length > 0) {
+            audioData = googleBuf.toString('base64');
+          }
+        } catch (googleErr: any) {
+          console.warn("[TTS] Google TTS fallback error:", googleErr?.message || googleErr);
+        }
+      }
 
       if (audioData) {
-        ttsCache.set(cacheKey, audioData);
-        if (ttsCache.size > 500) {
-            const firstKey = ttsCache.keys().next().value;
-            if (firstKey) ttsCache.delete(firstKey);
+        // Only cache if generated by the authentic Edge voice (so temporary fallback audio is not permanently stored)
+        if (isEdgeVoice) {
+          ttsCache.set(cacheKey, audioData);
+          if (ttsCache.size > 500) {
+              const firstKey = ttsCache.keys().next().value;
+              if (firstKey) ttsCache.delete(firstKey);
+          }
         }
-        res.json({ audio: audioData });
+        return res.json({ audio: audioData });
       } else {
-        res.status(500).json({ error: "Failed to generate audio" });
+        return res.status(500).json({ error: "Failed to generate audio" });
       }
     } catch (e: any) {
-      console.error("TTS Error:", e);
+      console.error("TTS General Error:", e);
       res.status(500).json({ error: e.message || "TTS failed" });
     }
   });
@@ -736,7 +842,7 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
     
     const spokenLang = url.searchParams.get('spokenLang') || 'Thai';
     const clientId = url.searchParams.get('clientId') || 'defaultClient';
-    const isSeriousMode = url.searchParams.get('seriousMode') === 'true';
+    let isSeriousMode = url.searchParams.get('seriousMode') === 'true';
     const userId = url.searchParams.get('userId') || null;
     const byokKey = url.searchParams.get('byokKey');
 
@@ -864,15 +970,20 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
       personaDetails += `
 
 [SERIOUS SPEAKING PRACTICE MODE ACTIVATED]
-คุณต้องพูดคุยตอบโต้กับผู้เรียนโดยใช้ภาษาเป้าหมาย (${targetLang === 'CN' ? 'Chinese' : 'English'}) เป็นหลัก และคอยให้คะแนน ประเมินความคืบหน้าตลอดการสนทนา! 
-- คุณต้องชี้แนะจุดอ่อนและจุดแข็งของผู้เรียน
+คุณต้องพูดคุยตอบโต้และสอนผู้เรียนโดยใช้ภาษาเป้าหมาย (${targetLang === 'CN' ? 'Mandarin Chinese' : 'English'}) เป็นหลัก 100%!
+- อธิบายคำศัพท์ ไวยากรณ์ และชวนคุยเป็นภาษา${targetLang === 'CN' ? 'จีน (Chinese)' : 'อังกฤษ (English)'}
+- ชี้แนะจุดอ่อนและจุดแข็งของผู้เรียน
 - หากผู้เรียนออกเสียงพลาด เพี้ยน หรือพูดผิดแกรมม่า ให้ชี้แจงจุดที่ผิดและบอกรูปประโยคหรือการออกเสียงที่ถูกต้องเสมอ
 - ประเมินคะแนนการพูดให้ผู้เรียนฟังบ่อยๆ
 - ในโหมดนี้ คุณจะสอนอย่างจริงจังและเข้มงวดมากขึ้นเพื่อเน้นฝึกการพูดและการฟังล้วนๆ!`;
     } else {
       personaDetails += `
 
-IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 'English'}. However, the user's preferred spoken language for explanations and general communication is ${spokenLang}. You MUST explain concepts, translate words, and communicate with the user primarily in ${spokenLang}, while teaching them ${targetLang === 'CN' ? 'Chinese' : 'English'}.`;
+[CRITICAL INSTRUCTION - NORMAL LEARNING MODE]
+- ผู้เรียนกำลังเรียน${targetLang === 'CN' ? 'ภาษาจีน' : 'ภาษาอังกฤษ'}
+- กฎเหล็ก: คุณต้องใช้ "ภาษาไทยเป็นหลักในการสอนและอธิบาย 100%" (ยกเว้นตัวคำศัพท์เป้าหมายหรือตัวอย่างประโยคภาษาต่างประเทศที่กำลังสอน)
+- คำอธิบายความหมาย ไวยากรณ์ การแปล การพูดคุยทักทาย และการตอบโต้ทั่วไป ให้พูดภาษาไทยเป็นหลักเสมอ ชัดเจน เป็นกันเองและเข้าใจง่าย
+- อย่าอธิบายเป็นภาษาอังกฤษล้วนหรือจีนล้วนเด็ดขาด เว้นแต่ผู้เรียนจะบอกหรือขอให้คุณพูดกับเขาเป็นภาษาที่เขาต้องการ`;
     }
 
 
@@ -881,6 +992,13 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
       : '';
 
     const systemInstruction = `${personaDetails}
+[CRITICAL SYSTEM DIRECTIVE: PRONUNCIATION, TONES & ACCENT]
+You are a Native Speaker. Your text-to-speech voice engine MUST perfectly match the native accent, tones, and phonology of the language you are speaking.
+- For Mandarin Chinese (中文): You MUST output native-level Mandarin. EXTREMELY IMPORTANT: When speaking Chinese, DO NOT include ANY English letters, Pinyin, or English alphabets in your spoken text generation. You MUST use ONLY pure Chinese characters (汉字) to represent Chinese words. This forces the voice engine to read native Chinese instead of falling back to English phonetics (e.g., never use English letter "b", "d", "p", "t", always use real Hanzi). Ensure all 4 tones are perfectly accurate. Speak like a native Chinese teacher from Beijing.
+- For Thai (ภาษาไทย): You MUST speak clearly with proper Thai tones and native cadence. Do NOT use a foreign accent.
+- For English: You MUST use a standard Native English accent (e.g., American or British).
+- When mixing languages in one sentence (e.g., explaining a Chinese word in Thai), you MUST strictly switch your accent for each word to its native pronunciation. Do not apply English phonetic rules to Chinese or Thai words.
+
 คุณมีความรอบรู้และมีฐานข้อมูลของแอปนี้อย่างละเอียด รวมถึงข้อสอบ HSK, บทเรียนต่างๆ, เอกสาร, และไฟล์คำศัพท์ 
 คุณสามารถมองเห็นผู้เรียนได้ผ่านกล้องวิดีโออย่างละเอียดและคมชัด (ถ้าเปิดกล้อง) ตอบสนองต่อหน้าตา ท่าทางของผู้เรียน ชูนิ้ว สิ่งของ หรือสีหน้าได้อย่างถูกต้องแม่นยำ
 หากผู้เรียนพูดแทรกในขณะที่คุณกำลังพูดอยู่ ให้หยุดพูดทันทีและตั้งใจฟังสิ่งที่ผู้เรียนพูด (ระบบจะจัดการเรื่องการหยุดพูดอัตโนมัติ ให้คุณหยุดการให้ข้อมูลต่อ)
@@ -966,37 +1084,35 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
       if (!sessionAi) throw new Error("GenAI not initialized");
       console.log("Connecting to Gemini Live API...");
       liveSessionOptions = {
-        model: "gemini-3.1-flash-live-preview",
+        model: "gemini-3.8-live",
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
-            // Audio response and transcription
-            const parts = (message as any).serverContent?.modelTurn?.parts;
+            const serverContent = (message as any).serverContent;
+            
+            // 1. Audio Output
+            const parts = serverContent?.modelTurn?.parts;
             if (parts && clientWs.readyState === 1) {
-              console.log("Received AI turn with parts", parts.length);
               for (const part of parts) {
                 if (part.inlineData?.data) {
                   clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
                 }
-                if (part.text && part.text.trim()) {
-                  console.log("AI Transcription chunk:", part.text);
-                  clientWs.send(JSON.stringify({ type: 'transcript', role: 'model', text: part.text }));
-                  addTranscriptChunk('model', part.text);
-                }
               }
-            } else if ((message as any).serverContent?.modelTurn) {
-               console.log("Received AI turn without parts?");
             }
 
-            // User transcription
-            const userParts = (message as any).serverContent?.userTurn?.parts;
-            if (userParts && clientWs.readyState === 1) {
-              for (const part of userParts) {
-                if (part.text && part.text.trim()) {
-                  console.log("User Transcription chunk:", part.text);
-                  clientWs.send(JSON.stringify({ type: 'transcript', role: 'user', text: part.text }));
-                  addTranscriptChunk('user', part.text);
-                }
-              }
+            // 2. Output Transcription (AI's speech to text)
+            const outTrans = serverContent?.outputTranscription;
+            if (outTrans?.text && outTrans.text.trim() && clientWs.readyState === 1) {
+              console.log("AI Transcription:", outTrans.text);
+              clientWs.send(JSON.stringify({ type: 'transcript', role: 'model', text: outTrans.text }));
+              addTranscriptChunk('model', outTrans.text);
+            }
+
+            // 3. Input Transcription (User's speech to text)
+            const inTrans = serverContent?.inputTranscription;
+            if (inTrans?.text && inTrans.text.trim() && clientWs.readyState === 1) {
+              console.log("User Transcription:", inTrans.text);
+              clientWs.send(JSON.stringify({ type: 'transcript', role: 'user', text: inTrans.text }));
+              addTranscriptChunk('user', inTrans.text);
             }
 
             // Tool Call response
@@ -1070,8 +1186,9 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: { parts: [{ text: systemInstruction }] },
-          outputAudioTranscription: {},
-          inputAudioTranscription: {},
+          outputAudioTranscription: { languageCode: targetLang === 'CN' ? 'zh-CN' : targetLang === 'TH' ? 'th-TH' : 'en-US' },
+          inputAudioTranscription: { languageCode: spokenLang === 'Chinese' ? 'zh-CN' : spokenLang === 'Thai' ? 'th-TH' : 'en-US' },
+
           tools: [{
             functionDeclarations: [
               {
@@ -1113,6 +1230,7 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
           }],
           speechConfig: {
              voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+             languageCode: targetLang === 'CN' ? 'zh' : targetLang === 'TH' ? 'th' : 'en'
           }
         },
       };
@@ -1127,8 +1245,37 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
       let shouldSendInitialGreeting = false;
 
       if (askWord) {
-         initialMessage = `ผู้เรียนต้องการถามและเรียนรู้เกี่ยวกับคำศัพท์นี้: "${askWord}" ให้เริ่มทักทายสั้นๆ และอธิบายคำศัพท์นี้ให้ฟังทันที พร้อมตัวอย่างประโยค และกระตุ้นให้ผู้เรียนบอกความหมายหรือลองออกเสียงตาม โดยระหว่างอธิบายอย่าลืมใช้คำสั่ง update_board เพื่อแสดงคำศัพท์นี้บนหน้าจอด้วย`;
          shouldSendInitialGreeting = true;
+         if (isSeriousMode) {
+           if (targetLang === 'CN') {
+             initialMessage = `ผู้เรียนได้กดเลือกคำศัพท์นี้เพื่อให้คุณสอน: "${askWord}"
+[ขณะนี้เปิด: โหมดฝึกพูดจริงจัง (Serious Mode)]
+คำสั่งสำคัญ:
+1. ทักทายสั้นๆ และเริ่มอธิบายคำศัพท์นี้ให้ผู้เรียนฟังทันที โดยใช้ "ภาษาจีน (Mandarin Chinese)" ในการสอนและสนทนาเป็นหลัก 100%!
+2. อธิบายความหมาย วิธีใช้ ยกตัวอย่างประโยคเป็นภาษาจีน และชวนผู้เรียนฝึกออกเสียงหรือแต่งประโยคตาม
+3. ชี้แนะและประเมินการออกเสียงและแกรมม่าของผู้เรียนอย่างจริงจัง
+4. อย่าลืมเรียกใช้คำสั่ง update_board เพื่อแสดงคำศัพท์ "${askWord}", พินอิน และคำแปลบนหน้าจอกระดานด้วย`;
+           } else {
+             initialMessage = `The learner selected this vocabulary word for you to teach: "${askWord}"
+[ACTIVE: Serious Speaking Practice Mode]
+CRITICAL INSTRUCTIONS:
+1. Greet briefly and immediately start teaching and explaining this vocabulary word primarily in ENGLISH (100% English immersion)!
+2. Explain its definition, nuances, how to use it, and provide clear example sentences in English.
+3. Prompt the learner to pronounce the word and try making their own sentence.
+4. Strictly assess and correct any pronunciation or grammar mistakes.
+5. Remember to call update_board to display "${askWord}", phonetic, and meaning on the user's whiteboard.`;
+           }
+         } else {
+           // Normal Mode (โหมดปกติ): ALWAYS USE THAI AS THE PRIMARY TEACHING LANGUAGE
+           initialMessage = `ผู้เรียนได้กดเลือกคำศัพท์นี้เพื่อให้คุณสอน: "${askWord}" (ภาษาเป้าหมายที่เรียน: ${targetLang === 'CN' ? 'ภาษาจีน' : 'ภาษาอังกฤษ'})
+[ขณะนี้เปิด: โหมดปกติ (Normal Mode)]
+กฎเหล็กและคำสั่งสำคัญ:
+1. คุณต้องสอนและอธิบายคำศัพท์นี้ให้ผู้เรียนฟังทันที โดยใช้ "ภาษาไทยเป็นหลักในการสอนและสื่อสาร 100%"
+2. ออกเสียงคำศัพท์เป้าหมาย "${askWord}" ให้ผู้เรียนฟังอย่างชัดเจน แล้วแปลความหมาย อธิบายวิธีการนำไปใช้ และยกตัวอย่างประโยคโดยอธิบายเป็น "ภาษาไทย" ทั้งหมดอย่างละเอียด เข้าใจง่าย และเป็นกันเอง
+3. กระตุ้นและชวนให้ผู้เรียนลองออกเสียงตาม หรือถามความเข้าใจ
+4. ห้ามอธิบายเป็นภาษาอังกฤษล้วนหรือภาษาจีนล้วนเด็ดขาด! ต้องอธิบายด้วยภาษาไทยเป็นหลัก เว้นแต่ผู้เรียนจะขอให้คุณพูดเป็นภาษาอื่น
+5. อย่าลืมเรียกใช้คำสั่ง update_board เพื่อแสดงคำศัพท์ "${askWord}", พินอิน/phonetic, และคำแปลภาษาไทยบนหน้าจอกระดานของผู้เรียนด้วยเสมอ`;
+         }
       }
 
       // Send initial text prompt to trigger the AI greeting ONLY if needed
@@ -1193,41 +1340,6 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
                  ],
                  turnComplete: true
                });
-
-               // Background OCR text extraction
-               (async () => {
-                 try {
-                   const ocrResponse = await sessionAi.models.generateContent({
-                     model: "gemini-3.8-flash",
-                     contents: [
-                       {
-                         role: "user",
-                         parts: [
-                           { text: "Extract all text exactly as written from this image. Do not add explanations. Just return the text verbatim." },
-                           { inlineData: { mimeType: docMimeType, data: image } }
-                         ]
-                       }
-                     ]
-                   });
-                   const extractedText = ocrResponse.text;
-                   if (extractedText && extractedText.trim().length > 0 && session && !sessionClosed) {
-                     latestDocText = extractedText;
-                     session.sendClientContent({
-                       turns: [
-                         {
-                           role: "user",
-                           parts: [
-                             { text: `[System Update] I have successfully extracted all text from the recently uploaded image to help you read it accurately. Here is the full extracted text. If the user asks you to read the image aloud, read this text verbatim from start to finish without skipping anything:\n\n${extractedText}` }
-                           ]
-                         }
-                       ],
-                       turnComplete: true
-                     });
-                   }
-                 } catch (ocrErr) {
-                   console.error("Background OCR Error:", ocrErr);
-                 }
-               })();
              }
            } catch (e) {
              console.error("Error sending doc image to Gemini:", e);
@@ -1255,6 +1367,63 @@ IMPORTANT INSTRUCTION: The user is learning ${targetLang === 'CN' ? 'Chinese' : 
            }
         }
         
+        if (type === 'ask_word' && typeof parsed.word === 'string' && parsed.word.trim()) {
+           const targetWord = parsed.word.trim();
+           console.log(`[Live Session] Received dynamic ask_word: ${targetWord}, isSeriousMode: ${isSeriousMode}, targetLang: ${targetLang}`);
+           let promptMsg = "";
+           if (isSeriousMode) {
+             if (targetLang === 'CN') {
+               promptMsg = `ผู้เรียนได้กดเลือกคำศัพท์ใหม่เพื่อให้คุณสอน: "${targetWord}"
+[ขณะนี้เปิด: โหมดฝึกพูดจริงจัง]
+คำสั่ง: เริ่มอธิบายคำศัพท์นี้ทันทีเป็นภาษาจีน (Mandarin Chinese) เป็นหลัก 100% ทั้งความหมาย วิธีใช้ และตัวอย่างประโยค พร้อมชวนผู้เรียนฝึกออกเสียงตาม และอย่าลืมเรียกใช้คำสั่ง update_board เพื่อขึ้นคำศัพท์บนกระดาน`;
+             } else {
+               promptMsg = `The learner selected a new vocabulary word to learn: "${targetWord}"
+[ACTIVE: Serious Speaking Practice Mode]
+CRITICAL: Immediately explain this word primarily in ENGLISH! Provide English definitions, usage, example sentences, and prompt the learner to pronounce it. Call update_board to update the whiteboard.`;
+             }
+           } else {
+             promptMsg = `ผู้เรียนได้กดเลือกคำศัพท์ใหม่เพื่อให้คุณสอน: "${targetWord}" (ภาษาเป้าหมายที่เรียน: ${targetLang === 'CN' ? 'ภาษาจีน' : 'ภาษาอังกฤษ'})
+[ขณะนี้เปิด: โหมดปกติ]
+กฎเหล็ก: ให้เริ่มสอนคำศัพท์นี้ทันทีโดยใช้ "ภาษาไทยเป็นหลักในการสอนและอธิบาย 100%" ออกเสียงคำศัพท์ แปลความหมาย อธิบายวิธีใช้ และยกตัวอย่างประโยคเป็นภาษาไทยอย่างชัดเจน ชวนผู้เรียนลองออกเสียงตาม ห้ามอธิบายเป็นภาษาต่างประเทศล้วน เว้นแต่ผู้เรียนขอ และอย่าลืมเรียกใช้คำสั่ง update_board เพื่อแสดงคำศัพท์และคำแปลบนกระดานด้วย`;
+           }
+           if (session && !sessionClosed && session.sendClientContent) {
+             try {
+               session.sendClientContent({
+                 turns: [{
+                   role: "user",
+                   parts: [{ text: promptMsg }]
+                 }],
+                 turnComplete: true
+               });
+             } catch (e: any) {
+               console.error("Error sending dynamic ask_word to Gemini:", e?.message);
+             }
+           }
+           return;
+        }
+
+        if (type === 'toggle_serious_mode') {
+           isSeriousMode = Boolean(parsed.seriousMode);
+           console.log(`[Live Session] User dynamically toggled seriousMode to: ${isSeriousMode}`);
+           let promptMsg = isSeriousMode
+             ? (targetLang === 'CN'
+                 ? `[ระบบแจ้งเตือน]: ผู้เรียนได้เปิด "โหมดฝึกพูดจริงจัง (Serious Mode)" แล้ว จากนี้เป็นต้นไปให้คุณสอนและสนทนาโดยใช้ภาษาจีน (Chinese) เป็นหลัก 100% คอยชี้แนะจุดออกเสียงผิดและให้คะแนนตลอดเวลา`
+                 : `[SYSTEM NOTICE]: The learner switched ON "Serious Speaking Practice Mode". From now on, teach and communicate purely in English (100% immersive English), correct pronunciation and grammar strictly, and assess their speech!`)
+             : `[ระบบแจ้งเตือน]: ผู้เรียนได้กลับสู่ "โหมดปกติ (Normal Mode)" แล้ว จากนี้เป็นต้นไป คุณต้องกลับมาใช้ "ภาษาไทยเป็นหลักในการสอนและสื่อสาร" เป็นกันเอง ใจดี อธิบายเข้าใจง่าย`;
+           if (session && !sessionClosed && session.sendClientContent) {
+             try {
+               session.sendClientContent({
+                 turns: [{
+                   role: "user",
+                   parts: [{ text: promptMsg }]
+                 }],
+                 turnComplete: true
+               });
+             } catch (e: any) {}
+           }
+           return;
+        }
+
         if (audio && session && !sessionClosed) {
           try {
             session.sendRealtimeInput({

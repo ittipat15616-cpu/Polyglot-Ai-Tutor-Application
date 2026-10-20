@@ -168,7 +168,7 @@ export default function DocumentGallery({
           </div>
         </div>
       )}
-      <div className="w-full flex-1 overflow-y-auto p-4 pt-16 sm:pt-20">
+      <div className="w-full flex-1 overflow-y-auto p-4 pt-4 sm:pt-6">
         <div className="flex flex-col gap-6 max-w-3xl mx-auto">
           {prependNode}
           {images.map((url, idx) => {

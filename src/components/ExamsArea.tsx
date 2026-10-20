@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { BookOpen, Headphones, PenTool, Mic, ChevronLeft, FileText, PlayCircle, Bot, ShieldAlert, Clock, Info, Download, ArrowRight, X, Bookmark, Play } from 'lucide-react';
 import DocumentGallery from './DocumentGallery';
 import mockExams from '../data/mock_exams.json';
@@ -253,33 +254,80 @@ export default function ExamsArea({ activeLang, onAskAI }: { activeLang: 'EN' | 
       const pdfUrl = `/hsk/${folderName}/${selectedExamSet}.pdf`;
 
       if (isFullscreen) {
-        return (
-          <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
-            {/* Floating Toolbar */}
-            <div className="absolute top-4 right-4 z-[60] flex flex-col items-center gap-3">
-              {onAskAI && (
+        return createPortal(
+          <div className="fixed inset-0 z-[999999] bg-gray-100 flex flex-col h-screen w-screen overflow-hidden">
+            {/* Locked Top Tab Header — strictly locked at top, nothing overlaps */}
+            <header className="shrink-0 z-10 bg-white border-b border-gray-200 shadow-md px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3 pt-[max(env(safe-area-inset-top),20px)]">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <FileText size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+                    {selectedCategory} - ชุดข้อสอบ {selectedExamSet} (โหมดเต็มจอ)
+                  </h2>
+                  <span className="text-[11px] text-gray-500 hidden sm:inline">
+                    คลิกเล่นวิดีโอเสียงด้านบนของหน้าแรก หรือดูเอกสารด้านล่าง
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
                 <button 
-                  onClick={() => onAskAI?.(`ฉันกำลังทำข้อสอบ ${selectedCategory} ชุด ${selectedExamSet} ช่วยอธิบายโจทย์และสอนเพิ่มเติมหน่อได้ไหม?`)}
-                  title="ถาม AI Tutor"
-                  className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white transition-all hover:scale-110"
-                  style={{ background: 'linear-gradient(135deg,#7c3aed,#5b21b6)', boxShadow: '0 4px 14px rgba(124,58,237,0.4)' }}
+                  onClick={() => setIsFullscreen(false)} 
+                  title="ออกเต็มจอ"
+                  className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs sm:text-sm border border-rose-200 shadow-xs transition-colors"
                 >
-                  <Bot size={22} />
+                  <X size={18} />
+                  <span>ออกเต็มจอ</span>
                 </button>
-              )}
-              
-              <button 
-                onClick={() => setIsFullscreen(false)} 
-                title="ออกเต็มจอ"
-                className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200"
-              >
-                 <X size={24} />
-              </button>
-            </div>
-            <div className="flex-1 rounded-xl overflow-hidden bg-gray-50 relative">
-              <DocumentGallery type="hsk" folder={folderName} prefix={selectedExamSet} enableAnnotation={true} />
-            </div>
-          </div>
+              </div>
+            </header>
+
+            {/* Document Gallery Content Area with YouTube Player Embedded at the Top of Page 1 */}
+            <main className="flex-1 w-full overflow-hidden relative">
+              <DocumentGallery 
+                type="hsk" 
+                folder={folderName} 
+                prefix={selectedExamSet} 
+                enableAnnotation={true}
+                prependNode={
+                  examData?.videoId ? (
+                    <div className="w-full bg-white rounded-2xl shadow-md border border-rose-100 p-4 mb-2 flex flex-col items-center">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full mb-3 gap-2">
+                        <div className="flex items-center gap-2 text-rose-600 font-bold text-sm sm:text-base">
+                          <PlayCircle size={22} className="text-rose-500 shrink-0" />
+                          <span>พาร์ทฟัง / คลิปเสียงข้อสอบ ({selectedCategory} {selectedExamSet})</span>
+                        </div>
+                        <a
+                          href={`https://www.youtube.com/watch?v=${examData.videoId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl font-bold text-xs transition-colors border border-rose-200 shadow-xs shrink-0 self-start sm:self-auto"
+                        >
+                          <Play size={14} fill="currentColor" />
+                          <span>เปิดฟังใน YouTube</span>
+                        </a>
+                      </div>
+                      
+                      <div className="w-full aspect-video rounded-xl overflow-hidden bg-gray-900 shadow-md border border-gray-200 max-w-3xl">
+                        <iframe 
+                          width="100%" 
+                          height="100%" 
+                          src={`https://www.youtube.com/embed/${examData.videoId}`} 
+                          title="YouTube video player" 
+                          frameBorder="0" 
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                          allowFullScreen
+                        ></iframe>
+                      </div>
+                    </div>
+                  ) : undefined
+                }
+              />
+            </main>
+          </div>,
+          document.body
         );
       }
 
@@ -358,17 +406,6 @@ export default function ExamsArea({ activeLang, onAskAI }: { activeLang: 'EN' | 
               />
             </div>
           </div>
-
-          {/* Floating Ask AI Button — fixed bottom right, always fully visible */}
-          {onAskAI && (
-            <button
-              onClick={() => onAskAI?.(`ฉันกำลังทำข้อสอบ ${selectedCategory} ชุด ${selectedExamSet} ช่วยอธิบายโจทย์และสอนเพิ่มเติมได้ไหม?`)}
-              className="fab-ai"
-            >
-              <Bot size={22} />
-              <span className="hidden sm:inline">ถาม AI Tutor</span>
-            </button>
-          )}
         </div>
       );
     }
