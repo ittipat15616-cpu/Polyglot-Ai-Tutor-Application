@@ -101,10 +101,7 @@ export default function App() {
 
   const handleStart = () => {
     setHasStarted(true);
-    setTimeout(() => {
-      setTutorialOverrideKey('guest_onboarding');
-      setIsTutorialActive(true);
-    }, 500); // Wait for the transition
+    speak('ขอให้สนุกกับการเรียนครับ');
   };
 
   const handleLanguageSelect = (code: 'EN' | 'CN' | 'TH') => {

@@ -6,7 +6,7 @@ import http from "http";
 import https from "https";
 import fs from "fs";
 import os from "os";
-import { EdgeTTS } from "node-edge-tts";
+import { synthesizeEdgeTTS } from "./src/server/edgeTTS";
 import { WebSocketServer, WebSocket } from "ws";
 import { PDFDocument } from 'pdf-lib';
 import { createServer as createViteServer } from "vite";
@@ -744,27 +744,21 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
       let audioData: string | null = null;
       let isEdgeVoice = false;
 
-      // 1. Try EdgeTTS first (with quick retry)
+      // 1. Synthesize with Microsoft Edge TTS v2 engine (Niwat for Thai male AI voice, Christopher for English male, etc.)
       try {
-        const ttsRate = customRate || "default";
-        const tts = new EdgeTTS({ voice, lang: edgeLang, rate: ttsRate });
-        const tempFile = path.join(os.tmpdir(), `tts_${Date.now()}_${Math.floor(Math.random()*1000)}.mp3`);
-        await tts.ttsPromise(text, tempFile);
-        if (fs.existsSync(tempFile)) {
-          audioData = fs.readFileSync(tempFile, { encoding: 'base64' });
+        const edgeRate = customRate || "+0%";
+        const buf = await synthesizeEdgeTTS(text, voice, edgeRate);
+        if (buf && buf.length > 0) {
+          audioData = buf.toString('base64');
           isEdgeVoice = true;
-          try { fs.unlinkSync(tempFile); } catch (e) {}
         }
       } catch (edgeErr: any) {
         console.warn(`[TTS] EdgeTTS attempt 1 failed (${edgeErr?.message || edgeErr}), retrying...`);
         try {
-          const tts = new EdgeTTS({ voice, lang: edgeLang, rate: customRate || "default" });
-          const tempFile = path.join(os.tmpdir(), `tts_retry_${Date.now()}_${Math.floor(Math.random()*1000)}.mp3`);
-          await tts.ttsPromise(text, tempFile);
-          if (fs.existsSync(tempFile)) {
-            audioData = fs.readFileSync(tempFile, { encoding: 'base64' });
+          const buf = await synthesizeEdgeTTS(text, voice, customRate || "+0%");
+          if (buf && buf.length > 0) {
+            audioData = buf.toString('base64');
             isEdgeVoice = true;
-            try { fs.unlinkSync(tempFile); } catch (e) {}
           }
         } catch (retryErr: any) {
           console.warn(`[TTS] EdgeTTS retry failed (${retryErr?.message || retryErr}), falling back to Google TTS engine...`);
