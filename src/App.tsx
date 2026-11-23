@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Book, BookOpen, Video, Pencil, Layers, FileSignature, UserCircle, Sparkles, Clock, Phone, Library, MessageSquare, Download, Gamepad2, Bot, LogOut, ZoomIn, ZoomOut, Timer, Shield, Calendar } from 'lucide-react';
+import { Book, BookOpen, Video, Pencil, Layers, FileSignature, UserCircle, Sparkles, Clock, Phone, Library, MessageSquare, Download, Gamepad2, Bot, LogOut, ZoomIn, ZoomOut, Timer, Shield, Calendar, Captions, Smartphone, Music } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LoginArea, { UserProfile } from './components/LoginArea';
 import LessonsArea from './components/LessonsArea';
@@ -8,6 +8,7 @@ import ExercisesArea from './components/ExercisesArea';
 import FlashcardsArea from './components/FlashcardsArea';
 import ExamsArea from './components/ExamsArea';
 import MockTestsTabArea from './components/MockTestsTabArea';
+import KaraokeArea from './components/karaoke/KaraokeArea';
 import ContactArea from './components/ContactArea';
 import AdminDashboardArea from './components/AdminDashboardArea';
 import VocabArea from './components/VocabArea';
@@ -29,6 +30,9 @@ import AIAssistantContext from './components/AIAssistantContext';
 import { InAppBrowserOverlay } from './components/InAppBrowserOverlay';
 import { InstallPromptModal } from './components/InstallPromptModal';
 import { UpdatePrompt } from './components/UpdatePrompt';
+import PromoStudioRecorder from './components/recorder/PromoStudioRecorder';
+import MobileCameraOverlay from './components/recorder/MobileCameraOverlay';
+import StandaloneSubtitleModal from './components/recorder/StandaloneSubtitleModal';
 
 const NAV_ITEMS = [
   { id: 'call',       icon: Video,          label: 'วิดีโอคอล'    },
@@ -40,6 +44,7 @@ const NAV_ITEMS = [
   { id: 'exercises',  icon: Book,           label: 'บทเรียน'      },
   { id: 'exams',      icon: Layers,         label: 'ข้อสอบ'       },
   { id: 'mocktests',  icon: Clock,          label: 'จำลองสอบ'     },
+  { id: 'karaoke',    icon: Music,          label: 'คาราโอเกะ'    },
   { id: 'contact',    icon: Phone,          label: 'ติดต่อ'     },
 ];
 
@@ -83,6 +88,11 @@ export default function App() {
   const [showLearningPlan, setShowLearningPlan] = useState(false);
   const [botMessage, setBotMessage] = useState<string | null>(null);
   const botMessageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [recorderOpenTrigger, setRecorderOpenTrigger] = useState(0);
+  const [isRecorderActive, setIsRecorderActive] = useState(false);
+  const [mobileCamOpenTrigger, setMobileCamOpenTrigger] = useState(0);
+  const [isMobileCamActive, setIsMobileCamActive] = useState(false);
+  const [showStandaloneSubtitles, setShowStandaloneSubtitles] = useState(false);
 
   useEffect(() => {
     document.documentElement.style.fontSize = `${uiScale * 16}px`;
@@ -208,15 +218,23 @@ export default function App() {
       if (e.detail) setActiveTab(e.detail);
     };
 
+    const handleRequestLoginEvent = () => {
+      setShowLogin(true);
+    };
+
     window.addEventListener('open-subscription-modal', handleOpenSub);
+    window.addEventListener('open_subscription_modal', handleOpenSub);
     window.addEventListener('open-byok-modal', handleOpenByok);
     window.addEventListener('byok_key_updated', handleByokUpdated);
     window.addEventListener('switch-tab', handleSwitchTab);
+    window.addEventListener('request-login-modal', handleRequestLoginEvent);
     return () => {
       window.removeEventListener('open-subscription-modal', handleOpenSub);
+      window.removeEventListener('open_subscription_modal', handleOpenSub);
       window.removeEventListener('open-byok-modal', handleOpenByok);
       window.removeEventListener('byok_key_updated', handleByokUpdated);
       window.removeEventListener('switch-tab', handleSwitchTab);
+      window.removeEventListener('request-login-modal', handleRequestLoginEvent);
     };
   }, []);
 
@@ -247,8 +265,8 @@ export default function App() {
   const isFreeTier = !subState || subState.tier === 'FREE';
   const isTabAllowedByTier = currentTierConfig.allowedTabs.includes(activeTab);
   
-  // Free tier can access lessons (คลังศัพท์), flashcards, vocab (คัดศัพท์), and vocab_exam (สอบศัพท์) in both CN and EN!
-  // Only exercises (บทเรียน) and exams (ข้อสอบ) in English (EN) require a paid plan.
+  // Free tier can access lessons (คลังศัพท์), flashcards, vocab (คัดศัพท์), vocab_exam (สอบศัพท์), and vocab_games (เกมคำศัพท์) in both CN and EN!
+  // Only mocktests (ระบบจำลองสอบ) and exercises (บทเรียน)/exams (ข้อสอบ) in English (EN) require a paid plan.
   const isLanguageAllowedForFree = !isFreeTier || activeLang === 'CN' || (activeTab !== 'exercises' && activeTab !== 'exams');
 
   const isSuperAdmin = isSuperAdminEmail(currentUser?.email);
@@ -257,7 +275,7 @@ export default function App() {
   // For Super Admin (Owner - ittipat15616@gmail.com):
   // Simulate the exact restrictions of the selected plan!
   // Tab 'admin' is always accessible so Owner is never locked out of backend settings.
-  // When Owner simulates FREE, tabs like Games, Mock Tests, or English exercises/exams WILL be locked, exactly like a real user!
+  // When Owner simulates FREE, Mock Tests and English exercises/exams WILL be locked, exactly like a real user!
   const isTabLocked = activeTab !== 'admin' && (
     isSuperAdmin
       ? (!isTabAllowedByTier || !isLanguageAllowedForFree)
@@ -347,7 +365,7 @@ export default function App() {
             <div className="flex flex-col items-start">
               <span>
                 {isSuperAdminEmail(currentUser?.email)
-                  ? `${currentTierConfig.name} (Owner)`
+                  ? (subState?.tier === 'ULTRA' ? 'Owner VIP' : `${currentTierConfig.name} (Owner)`)
                   : isAdminEmail(currentUser?.email)
                   ? 'Starter Plan (Admin)'
                   : currentTierConfig.name}
@@ -388,12 +406,12 @@ export default function App() {
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border border-emerald-400/40'
                 : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300'
             }`}
-            title="ตั้งค่า Gemini API Key ส่วนตัว (BYOK) เพื่อรับสิทธิพิเศษการโทรสุดคุ้ม"
+            title="ตั้งค่า Gemini API Key ส่วนตัว (BYOK) เพื่อคอลกับ AI ฟรีไม่อั้นทุกแพ็กเกจ"
           >
             <Key size={14} className={hasByok ? "text-emerald-200" : "text-indigo-600"} />
             <div className="flex flex-col items-start text-left">
               <span className="hidden sm:inline">
-                {hasByok ? 'BYOK: เปิดใช้' : 'ใส่ API Key (ลดเครดิต)'}
+                {hasByok ? 'BYOK: โทรฟรีไม่อั้น' : 'ใส่ API Key (โทรฟรีไม่อั้น)'}
               </span>
               <span className="sm:hidden">
                 {hasByok ? 'BYOK' : 'API Key'}
@@ -457,6 +475,56 @@ export default function App() {
               <Bot size={15} /> <span className="hidden sm:inline">แนะนำการใช้งาน</span><span className="sm:hidden">แนะนำ</span>
             </button>
           )}
+
+          {/* Creator & Video Subtitle Studio Buttons (Desktop Recorder / iPad-Mobile Camera / AI Video Subtitles) */}
+          <div className="flex items-center gap-1.5">
+            <button
+              id="btn-promo-recorder"
+              onClick={() => setRecorderOpenTrigger((n) => n + 1)}
+              className={`flex items-center gap-1.5 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 shadow-sm cursor-pointer ${
+                isRecorderActive
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+              }`}
+              title="สตูดิโออัดคลิปบนคอมพิวเตอร์ (อัดหน้าจอ + เสียงแอป + ไมค์ + กล้องวงกลม)"
+            >
+              <Video size={14} className={isRecorderActive ? 'text-red-200' : 'text-red-400'} />
+              <span className="hidden md:inline">
+                {isRecorderActive ? 'กำลังอัด (คอม)' : 'อัดคลิป (คอม)'}
+              </span>
+              <span className="md:hidden">
+                {isRecorderActive ? 'อัดอยู่' : 'อัดคอม'}
+              </span>
+            </button>
+
+            <button
+              id="btn-mobile-camera-mode"
+              onClick={() => setMobileCamOpenTrigger((n) => n + 1)}
+              className={`flex items-center gap-1.5 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 shadow-sm cursor-pointer ${
+                isMobileCamActive
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-sky-700 hover:bg-sky-800 text-white'
+              }`}
+              title="โหมดกล้องอัดคลิปสำหรับ iPad / โทรศัพท์มือถือ (เปิดเฉพาะกล้องวงกลม — อัดหน้าจอและเปิดไมค์จากเครื่องเองเท่านั้น)"
+            >
+              <Smartphone size={14} className="text-sky-200" />
+              <span className="hidden md:inline">
+                {isMobileCamActive ? 'กล้อง iPad/มือถือ เปิดอยู่' : 'กล้อง iPad/มือถือ'}
+              </span>
+              <span className="md:hidden">กล้องมือถือ</span>
+            </button>
+
+            <button
+              id="btn-standalone-subtitles"
+              onClick={() => setShowStandaloneSubtitles(true)}
+              className="flex items-center gap-1.5 text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 shadow-sm bg-indigo-700 hover:bg-indigo-800 text-white cursor-pointer"
+              title="โยนไฟล์วิดีโอใดก็ได้เข้ามาใส่ซับไตเติ้ล (ฟรีบนเครื่อง 0 เครดิต หรือ Gemini AI 5 เครดิต)"
+            >
+              <Captions size={14} className="text-sky-300" />
+              <span className="hidden sm:inline">ใส่ซับวิดีโอ</span>
+              <span className="sm:hidden">ใส่ซับ</span>
+            </button>
+          </div>
 
           {/* Auth */}
           {currentUser ? (
@@ -522,8 +590,8 @@ export default function App() {
               </h2>
               <p className="text-sm text-slate-600 max-w-md mb-6">
                 {!isLanguageAllowedForFree
-                  ? 'แพ็กเกจฟรีใช้งานได้เฉพาะบทเรียนและข้อสอบภาษาจีน (CN) เท่านั้น อัปเกรดแพ็กเกจเพื่อเข้าถึงเนื้อหาภาษาอังกฤษ'
-                  : 'ฟีเจอร์นี้เปิดให้ใช้งานเฉพาะสมาชิกแพ็กเกจขึ้นไป (เริ่มต้นเพียง 69 บาท / 30 วัน)'}
+                  ? 'แพ็กเกจฟรีใช้งานได้เฉพาะบทเรียนและข้อสอบภาษาจีน (CN) เท่านั้น อัปเกรดแพ็กเกจเพื่อเข้าถึงเนื้อหาภาษาอังกฤษ (เริ่มต้น 69 บาท / 30 วัน)'
+                  : 'ฟีเจอร์นี้เปิดให้ใช้งานเฉพาะสมาชิกแพ็กเกจขึ้นไป (เริ่มต้นเพียง 69 บาท / 30 วัน พร้อมรับ 50 เครดิต AI / เดือน)'}
               </p>
               <button
                 onClick={() => setShowSubModal(true)}
@@ -577,6 +645,11 @@ export default function App() {
                     setActiveTab('call');
                   }}
                 />
+              </motion.div>
+            )}
+            {activeTab === 'karaoke' && (
+              <motion.div key={`karaoke_${currentUser?.uid || 'guest'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
+                <KaraokeArea activeLang={activeLang} />
               </motion.div>
             )}
             {activeTab === 'contact' && (
@@ -748,6 +821,25 @@ export default function App() {
           }
           if (tutorialOverrideKey) setTutorialOverrideKey(null);
         }}
+      />
+
+      {/* Built-in Desktop Screen & Facecam Studio */}
+      <PromoStudioRecorder
+        openTrigger={recorderOpenTrigger}
+        onActiveStateChange={setIsRecorderActive}
+      />
+
+      {/* Dedicated iPad / Mobile Video-Only Floating Facecam Mode (Native Screen Recording) */}
+      <MobileCameraOverlay
+        openTrigger={mobileCamOpenTrigger}
+        onActiveStateChange={setIsMobileCamActive}
+        onOpenStandaloneSubtitles={() => setShowStandaloneSubtitles(true)}
+      />
+
+      {/* Standalone Upload-Any-Video Gemini AI Subtitle Studio (5 Credits) */}
+      <StandaloneSubtitleModal
+        isOpen={showStandaloneSubtitles}
+        onClose={() => setShowStandaloneSubtitles(false)}
       />
     </div>
   );

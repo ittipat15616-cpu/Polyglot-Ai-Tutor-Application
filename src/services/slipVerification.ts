@@ -1,7 +1,6 @@
 import jsQR from 'jsqr';
 import { db, auth } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { getStoredByokKey } from './byokService';
 
 export interface SlipVerificationResult {
   success: boolean;
@@ -116,14 +115,12 @@ export async function verifyPaymentSlip(
 
   // 2. AI Verification via Gemini Backend
   try {
-    const byokKey = getStoredByokKey();
     const verifyRes = await fetch('/api/verify-slip', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        ...(byokKey ? { 'x-byok-key': byokKey } : {})
       },
-      body: JSON.stringify({ imageUrl, expectedAmount, byokKey: byokKey || undefined })
+      body: JSON.stringify({ imageUrl, expectedAmount })
     });
     
     if (!verifyRes.ok) {

@@ -28,8 +28,8 @@ export const TUTORIAL_SCRIPTS: Record<string, PageTutorial> = {
       },
       {
         targetId: 'btn-byok-settings',
-        title: '2. แนะนำระบบ BYOK (รับสิทธิ์คอลสุดคุ้ม)',
-        robotSpeech: 'ปุ่มใส่ Gemini API Key ฟรีจาก Google AI Studio ช่วยเพิ่มเวลาคอล 4 ถึง 30 เท่า และแพ็กเกจ 269 บาทขึ้นไป คอลได้ไม่อั้น 1 เดือนเต็ม มีคลิปสอนรับคีย์ฟรีเพียง 2 นาที หรือสอบถามแอดมินได้ตลอด 24 ชั่วโมงครับ',
+        title: '2. แนะนำระบบ BYOK (คอล AI ฟรีไม่อั้นทุกแพ็กเกจ)',
+        robotSpeech: 'ปุ่มใส่ Gemini API Key ฟรีจาก Google AI Studio ช่วยให้คุณคอลเสียงและวิดีโอคอลกับ AI ได้ฟรีไม่อั้น 0 เครดิต ทุกแพ็กเกจรวมถึง Free Plan มีคลิปสอนรับคีย์ฟรีเพียง 2 นาที หรือสอบถามแอดมินได้ตลอด 24 ชั่วโมงครับ',
         placement: 'bottom',
         requireManualNext: true,
       },

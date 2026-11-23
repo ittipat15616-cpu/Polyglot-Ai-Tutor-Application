@@ -2,8 +2,6 @@ import { db, auth } from '../firebase';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { UserSubscriptionState, SubscriptionTier, TIER_CONFIGS, isAdminEmail, isSuperAdminEmail } from '../types/subscription';
 
-const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
-
 function getTodayString(): string {
   const d = new Date();
   const year = d.getFullYear();
@@ -13,7 +11,7 @@ function getTodayString(): string {
 }
 
 /**
- * Calculate effective subscription state for ANY user state (handles expiration and 10-day cycle refresh)
+ * Calculate effective subscription state for ANY user state (handles 30-day plan expiration)
  */
 export function getEffectiveSubscriptionState(
   state: UserSubscriptionState,
@@ -42,7 +40,7 @@ export function getEffectiveSubscriptionState(
       effectiveState.isTrial = false;
       return { state: effectiveState, changed: false };
     }
-    // For other tiers (STARTER, BASIC, PLUS, PREMIUM, PRO), continue down to normal 10-day cycle / expiration logic
+    // For other tiers (STARTER, BASIC, PLUS, PREMIUM, PRO), continue down to normal 30-day expiration logic
   } else if (emailToCheck && isAdminEmail(emailToCheck)) {
     // Admin accounts (nongrily@gmail.com, weeranan172550@gmail.com):
     // Starter plan (Admin) lifetime access, 0 free daily/cycle credits (must top up themselves)
@@ -69,34 +67,27 @@ export function getEffectiveSubscriptionState(
     changed = true;
   }
 
-  // 2. Check 10-Day Cycle Reset
+  // 2. Sync monthly (30-day) credit cap (no 10-day auto-refresh; credits are granted upfront for 30 days and expire with the plan)
   const tierMax = TIER_CONFIGS[effectiveState.tier]?.dailyCredits || 0;
-  effectiveState.maxDailyCredits = tierMax;
+  if (effectiveState.maxDailyCredits !== tierMax) {
+    effectiveState.maxDailyCredits = tierMax;
+    changed = true;
+  }
 
-  if (effectiveState.tier !== 'FREE' && tierMax > 0 && effectiveState.expiresAt && Date.now() <= effectiveState.expiresAt) {
-    if (!effectiveState.nextCreditResetAt) {
-      effectiveState.nextCreditResetAt = Math.min(effectiveState.expiresAt, Date.now() + TEN_DAYS_MS);
-      effectiveState.lastCreditResetAt = Date.now();
-      if (effectiveState.dailyCredits < tierMax) {
-        effectiveState.dailyCredits = tierMax;
-      }
-      changed = true;
-    } else if (Date.now() >= effectiveState.nextCreditResetAt) {
-      effectiveState.dailyCredits = tierMax;
-      effectiveState.lastCreditResetAt = Date.now();
-      while (effectiveState.nextCreditResetAt <= Date.now()) {
-        effectiveState.nextCreditResetAt += TEN_DAYS_MS;
-      }
-      if (effectiveState.nextCreditResetAt > effectiveState.expiresAt) {
-        effectiveState.nextCreditResetAt = effectiveState.expiresAt;
-      }
-      effectiveState.chatMessageCount = 0;
-      effectiveState.callSecondsCount = 0;
+  if (effectiveState.nextCreditResetAt) {
+    effectiveState.nextCreditResetAt = null;
+    changed = true;
+  }
+
+  if (tierMax === 0 || effectiveState.tier === 'FREE') {
+    if (effectiveState.dailyCredits !== 0) {
+      effectiveState.dailyCredits = 0;
       changed = true;
     }
-  } else if (tierMax === 0) {
-    effectiveState.dailyCredits = 0;
     effectiveState.nextCreditResetAt = null;
+  } else if (effectiveState.dailyCredits < 0) {
+    effectiveState.dailyCredits = 0;
+    changed = true;
   }
 
   return { state: effectiveState, changed };
@@ -364,32 +355,15 @@ export async function loadUserSubscription(): Promise<UserSubscriptionState> {
     state.isTrial = false;
   }
 
-  // 2. Check 10-Day Cycle Reset
+  // 2. Sync monthly (30-day) credit cap (no 10-day auto-refresh; credits expire with plan)
   const tierMax = TIER_CONFIGS[state.tier]?.dailyCredits || 0;
   state.maxDailyCredits = tierMax;
+  state.nextCreditResetAt = null;
 
-  if (state.tier !== 'FREE' && tierMax > 0 && state.expiresAt && Date.now() <= state.expiresAt) {
-    if (!state.nextCreditResetAt) {
-      state.nextCreditResetAt = Math.min(state.expiresAt, Date.now() + TEN_DAYS_MS);
-      state.lastCreditResetAt = Date.now();
-      if (state.dailyCredits < tierMax) {
-        state.dailyCredits = tierMax;
-      }
-    } else if (Date.now() >= state.nextCreditResetAt) {
-      state.dailyCredits = tierMax;
-      state.lastCreditResetAt = Date.now();
-      while (state.nextCreditResetAt <= Date.now()) {
-        state.nextCreditResetAt += TEN_DAYS_MS;
-      }
-      if (state.nextCreditResetAt > state.expiresAt) {
-        state.nextCreditResetAt = state.expiresAt;
-      }
-      state.chatMessageCount = 0;
-      state.callSecondsCount = 0;
-    }
-  } else if (tierMax === 0) {
+  if (tierMax === 0 || state.tier === 'FREE') {
     state.dailyCredits = 0;
-    state.nextCreditResetAt = null;
+  } else if (state.dailyCredits < 0) {
+    state.dailyCredits = 0;
   }
 
   // Cache in-memory singleton
@@ -443,7 +417,7 @@ export function getTotalCredits(state: UserSubscriptionState): number {
  * Emits real-time subscription_updated event for UI components.
  */
 export async function deductCredit(
-  typeOrAmount: number | 'mock_test' | 'voice_call_30s' | 'video_call_30s' | 'call_doc_upload' | 'chat_message' | 'call_start_or_minute' | 'vocab_exam'
+  typeOrAmount: number | 'mock_test' | 'voice_call_30s' | 'video_call_30s' | 'call_doc_upload' | 'chat_message' | 'call_start_or_minute' | 'vocab_exam' | 'video_subtitle' | 'karaoke_translate'
 ): Promise<{ success: boolean; newState: UserSubscriptionState; deducted: boolean }> {
   const state = await loadUserSubscription();
   const total = getTotalCredits(state);
@@ -456,9 +430,15 @@ export async function deductCredit(
       return { success: true, newState: state, deducted: false };
     }
     amount = typeOrAmount;
+  } else if (typeOrAmount === 'video_subtitle') {
+    // 5 credits for Gemini AI Video Subtitles
+    amount = 5;
   } else if (typeOrAmount === 'mock_test' || typeOrAmount === 'video_call_30s' || typeOrAmount === 'call_doc_upload') {
     // 3 credits for: Exam Grading, 30-sec Video Call, Upload Photo during call
     amount = 3;
+  } else if (typeOrAmount === 'karaoke_translate') {
+    // 2 credits for translating a brand-new uncached YouTube song (cached thereafter for everyone)
+    amount = 2;
   } else if (typeOrAmount === 'vocab_exam' || typeOrAmount === 'voice_call_30s' || typeOrAmount === 'call_start_or_minute') {
     // 1 credit for: Vocab Exam submission, 30-sec Voice Call (camera off)
     amount = 1;
@@ -513,7 +493,7 @@ export async function upgradeTier(newTier: SubscriptionTier): Promise<UserSubscr
   state.maxDailyCredits = config.dailyCredits;
   state.dailyCredits = config.dailyCredits;
   state.lastCreditResetAt = Date.now();
-  state.nextCreditResetAt = config.dailyCredits > 0 ? Date.now() + TEN_DAYS_MS : null;
+  state.nextCreditResetAt = null;
   state.chatMessageCount = 0;
   state.callSecondsCount = 0;
   

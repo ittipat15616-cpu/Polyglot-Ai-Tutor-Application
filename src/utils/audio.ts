@@ -1,4 +1,7 @@
+import { emitAppTtsStart, emitAppTtsEnd } from '../services/appSpeechBus';
+
 let currentAudio: HTMLAudioElement | null = null;
+let currentSpeechEventId = '';
 let activeTtsRequestId = 0;
 const clientAudioCache = new Map<string, string>();
 
@@ -19,7 +22,7 @@ export const playThaiTTS = async (text: string, onEnd?: () => void): Promise<HTM
   // Check client-side memory cache first for instant playback
   if (clientAudioCache.has(cleanText)) {
     const audioData = clientAudioCache.get(cleanText)!;
-    return playAudioData(audioData, requestId, onEnd);
+    return playAudioData(audioData, requestId, onEnd, cleanText);
   }
 
   try {
@@ -48,7 +51,7 @@ export const playThaiTTS = async (text: string, onEnd?: () => void): Promise<HTM
 
     if (data.audio) {
       clientAudioCache.set(cleanText, data.audio);
-      return playAudioData(data.audio, requestId, onEnd);
+      return playAudioData(data.audio, requestId, onEnd, cleanText);
     } else {
       throw new Error('No audio returned from server');
     }
@@ -65,32 +68,35 @@ export const playThaiTTS = async (text: string, onEnd?: () => void): Promise<HTM
 const playAudioData = (
   base64Audio: string,
   requestId: number,
-  onEnd?: () => void
+  onEnd?: () => void,
+  spokenText?: string
 ): HTMLAudioElement | null => {
   try {
     const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
     currentAudio = audio;
+    const speechId = spokenText ? emitAppTtsStart(spokenText) : '';
+    currentSpeechEventId = speechId;
 
-    if (onEnd) {
-      audio.onended = () => {
-        if (requestId === activeTtsRequestId) {
-          onEnd();
+    const finishSpeech = () => {
+      if (speechId) {
+        emitAppTtsEnd(speechId);
+        if (currentSpeechEventId === speechId) {
+          currentSpeechEventId = '';
         }
-      };
-      audio.onerror = () => {
-        if (requestId === activeTtsRequestId) {
-          onEnd();
-        }
-      };
-    }
+      }
+      if (requestId === activeTtsRequestId && onEnd) {
+        onEnd();
+      }
+    };
+
+    audio.onended = finishSpeech;
+    audio.onerror = finishSpeech;
 
     const playPromise = audio.play();
     if (playPromise !== undefined) {
       playPromise.catch((e) => {
         console.warn('[Audio] Autoplay error:', e);
-        if (requestId === activeTtsRequestId && onEnd) {
-          onEnd();
-        }
+        finishSpeech();
       });
     }
     return audio;
@@ -127,7 +133,7 @@ export const playTTS = async (
 
   const cacheKey = `${lang}:${cleanText}`;
   if (clientAudioCache.has(cacheKey)) {
-    return playAudioData(clientAudioCache.get(cacheKey)!, requestId, onEnd);
+    return playAudioData(clientAudioCache.get(cacheKey)!, requestId, onEnd, cleanText);
   }
 
   try {
@@ -155,7 +161,7 @@ export const playTTS = async (
 
     if (data.audio) {
       clientAudioCache.set(cacheKey, data.audio);
-      return playAudioData(data.audio, requestId, onEnd);
+      return playAudioData(data.audio, requestId, onEnd, cleanText);
     } else {
       throw new Error('No audio data received');
     }
@@ -236,10 +242,17 @@ export const playLocalFallbackTTS = (text: string, lang: string, onEnd?: () => v
         utterance.rate = rate;
       }
 
-      if (onEnd) {
-        utterance.onend = onEnd;
-        utterance.onerror = onEnd;
-      }
+      const speechId = emitAppTtsStart(text);
+      currentSpeechEventId = speechId;
+      const done = () => {
+        if (speechId) {
+          emitAppTtsEnd(speechId);
+          if (currentSpeechEventId === speechId) currentSpeechEventId = '';
+        }
+        if (onEnd) onEnd();
+      };
+      utterance.onend = done;
+      utterance.onerror = done;
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
@@ -254,6 +267,10 @@ export const playLocalFallbackTTS = (text: string, lang: string, onEnd?: () => v
 
 export const stopThaiTTS = () => {
   activeTtsRequestId++; // Invalidate any in-flight requests
+  if (currentSpeechEventId) {
+    emitAppTtsEnd(currentSpeechEventId);
+    currentSpeechEventId = '';
+  }
   if (currentAudio) {
     try {
       currentAudio.pause();

@@ -21,7 +21,11 @@ import {
   Cloud,
   Smartphone,
   Laptop,
-  PlayCircle
+  PlayCircle,
+  FileSignature,
+  Clock,
+  Music,
+  Captions
 } from 'lucide-react';
 import { 
   getStoredByokKey, 
@@ -29,7 +33,12 @@ import {
   removeStoredByokKey, 
   validateApiKeyWithServer,
   getByokCallRates,
-  syncByokKeyWithFirestore
+  syncByokKeyWithFirestore,
+  syncByokDailyUsageWithFirestore,
+  getByokDailyUsage,
+  BYOK_DAILY_LIMITS,
+  ByokDailyUsage,
+  getResetTimeLabelThai
 } from '../services/byokService';
 import { UserSubscriptionState } from '../types/subscription';
 import { auth } from '../firebase';
@@ -57,15 +66,19 @@ export const ByokModal: React.FC<ByokModalProps> = ({
     message: string;
   }>({ status: 'idle', message: '' });
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [dailyUsage, setDailyUsage] = useState<ByokDailyUsage>(() => getByokDailyUsage());
 
   useEffect(() => {
     if (isOpen) {
-      // Sync latest key from Firestore if logged in
+      // Sync latest key & daily usage from Firestore if logged in
       syncByokKeyWithFirestore().then((cloudKey) => {
         const stored = cloudKey || getStoredByokKey();
         setActiveKey(stored);
         setApiKeyInput(stored || '');
         setValidationResult({ status: 'idle', message: '' });
+      });
+      syncByokDailyUsageWithFirestore().then((usage) => {
+        setDailyUsage(usage);
       });
     }
   }, [isOpen]);
@@ -186,7 +199,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-indigo-200/80 mt-0.5">
-                  เชื่อมต่อคีย์ส่วนตัวของคุณเพื่อรับสิทธิ์คอลและวิดีโอคอลสุดคุ้มแบบก้าวกระโดด
+                  คอล AI ไม่อั้น + สอบศัพท์ 7 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 3 • ใส่ซับ AI 1 คลิป/วัน (≤5 นาที)
                 </p>
               </div>
             </div>
@@ -298,7 +311,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-900 text-sm">3 ขั้นตอนง่ายๆ ขอรับคีย์ฟรี (ใช้เวลา 1 นาที)</h3>
-                    <p className="text-[11px] text-slate-500">สำหรับช่วงทดลอง 14 วัน (โทรฟรี 0 เครดิต) หรือทุกท่านที่ต้องการประหยัดเครดิต</p>
+                    <p className="text-[11px] text-slate-500">ใช้ได้ทุกแพ็กเกจรวมถึง Free Plan — คอลเสียงและวิดีโอคอลกับ AI ฟรีไม่อั้น (0 เครดิต)</p>
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 px-2.5 py-0.5 rounded-full w-fit">
@@ -565,126 +578,120 @@ export const ByokModal: React.FC<ByokModalProps> = ({
             <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-50/50 to-emerald-50/50 border border-amber-200/90 rounded-2xl flex items-start gap-2.5 text-xs text-amber-950 shadow-2xs">
               <span className="text-base shrink-0">💡</span>
               <div className="space-y-0.5">
-                <div className="font-bold text-amber-900">คุ้มค่าระยะยาว ทำครั้งเดียวใช้ได้ตลอดไป:</div>
+                <div className="font-bold text-amber-900">ทำครั้งเดียวใช้ได้ตลอดไป คุ้มสุดทุกแพ็กเกจ:</div>
                 <div className="text-slate-600 leading-relaxed">
-                  API Key นี้จะผูกกับบัญชีของคุณตลอดไป แม้หมดช่วงทดลอง 14 วัน หากคุณเลือกใช้แพ็กเกจ Starter หรือ Basic ในอนาคต คีย์นี้จะช่วยลดการใช้เครดิตให้คุณโทรได้ยาวนานขึ้นถึง <strong>5–10 เท่า</strong> โดยไม่ต้องตั้งค่าใหม่อีกเลย
+                  API Key นี้จะผูกกับบัญชีของคุณตลอดไป ใช้คอลเสียง & วิดีโอคอล AI <strong>ฟรีไม่อั้น</strong> พร้อมโควตาฟรีประจำวันสำหรับ <strong>สอบศัพท์ (7 ครั้ง/วัน)</strong>, <strong>ตรวจข้อสอบจำลองสอบ (3 ครั้ง/วัน)</strong>, <strong>คาราโอเกะแปลเพลงใหม่ (3 เพลง/วัน)</strong> และ <strong>ใส่ซับวิดีโอ AI (1 คลิป/วัน ความยาวไม่เกิน 5 นาที)</strong> โดยเมื่อใช้ครบสิทธิ์ของวันสามารถเลือกใช้เครดิตในแอปทำต่อได้ทันที
                 </div>
               </div>
             </div>
 
-            {/* Privileges Table / Breakdown */}
+            {/* Privileges Breakdown */}
             <div className="space-y-3 pt-4 border-t border-slate-100">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                   <Zap size={16} className="text-amber-500" />
-                  ตารางสิทธิประโยชน์สุดคุ้มสำหรับลูกค้า BYOK
+                  สิทธิประโยชน์สำหรับผู้เชื่อมต่อ BYOK (ทุกแพ็กเกจ)
                 </h3>
-                <span className="text-[11px] text-slate-500 font-medium">ตัดเครดิตตอนวินาทีแรก (00:01)</span>
+                <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg">
+                  รีเซ็ตโควตาทุกวัน {getResetTimeLabelThai()}
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Testing Plan Trial Card */}
-                <div className="sm:col-span-2 p-3.5 rounded-2xl border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 space-y-1.5 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles size={16} className="text-emerald-600" />
-                      <span className="font-bold text-emerald-950 text-xs sm:text-sm">Testing Plan (ช่วงทดลองใช้ 14 วัน สำหรับบัญชีใหม่)</span>
-                    </div>
-                    <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold">
-                      🎁 ฟรี 0 เครดิต
+              <div className="p-4 rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 via-teal-50/70 to-white space-y-3 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2.5 border-b border-emerald-200/70">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={16} className="text-emerald-600 shrink-0" />
+                    <span className="font-bold text-emerald-950 text-xs sm:text-sm">
+                      ครอบคลุมทุกแพ็กเกจในระบบ (ปลอดภัยต่อ Free Tier ของ Google)
                     </span>
                   </div>
-                  <div className="text-xs text-emerald-900 grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
-                    <div className="flex items-center gap-1.5 font-semibold">
-                      <PhoneCall size={13} className="text-emerald-700 shrink-0" />
-                      <span>คอลเสียง & วิดีโอคอล: <strong>โทรไม่อั้น (0 เครดิต)</strong></span>
+                  <span className="text-[11px] text-emerald-800 font-semibold">
+                    Free • Testing • Starter • Basic • Plus
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-indigo-700 font-bold text-xs">
+                        <PhoneCall size={14} className="shrink-0" />
+                        <span>คอลเสียง & วิดีโอคอล AI</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">ไม่จำกัด</span>
                     </div>
-                    <div className="flex items-center gap-1.5 font-semibold">
-                      <ImageIcon size={13} className="text-emerald-700 shrink-0" />
-                      <span>ส่งภาพ & เอกสารในคอล: <strong>ฟรี (0 เครดิต)</strong></span>
+                    <div className="text-sm font-black text-emerald-700">ฟรีไม่อั้น (0 เครดิต)</div>
+                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1"><Video size={11} /> วิดีโอคอล</span>
+                      <span className="inline-flex items-center gap-1"><ImageIcon size={11} /> ส่งรูป/เอกสารฟรี</span>
                     </div>
                   </div>
-                  <div className="text-[11px] text-emerald-700">
-                    *สิทธิ์ใช้งานฟรี 0 เครดิตครอบคลุมตลอดระยะเวลาทดลอง 14 วัน เมื่อเชื่อมต่อ Gemini API Key ของตนเอง
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-blue-700 font-bold text-xs">
+                        <FileSignature size={14} className="shrink-0" />
+                        <span>ตรวจสอบคำศัพท์ (Vocab)</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.vocab_exam - dailyUsage.vocab_exam)}/{BYOK_DAILY_LIMITS.vocab_exam} วันนี้
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.vocab_exam} ครั้ง / วัน</div>
+                    <div className="text-[11px] text-slate-500">ครบสิทธิ์ใช้ต่อด้วย 1 เครดิต/ครั้ง</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-purple-700 font-bold text-xs">
+                        <Clock size={14} className="shrink-0" />
+                        <span>ตรวจข้อสอบจำลองสอบ</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
+                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.mock_test - dailyUsage.mock_test)}/{BYOK_DAILY_LIMITS.mock_test} วันนี้
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.mock_test} ครั้ง / วัน</div>
+                    <div className="text-[11px] text-slate-500">ครอบคลุม HSK & IELTS (ครบสิทธิ์ใช้ 3 เครดิต)</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs">
+                        <Music size={14} className="shrink-0" />
+                        <span>คาราโอเกะ แปลเพลงใหม่</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
+                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.karaoke_translate - dailyUsage.karaoke_translate)}/{BYOK_DAILY_LIMITS.karaoke_translate} วันนี้
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.karaoke_translate} เพลงใหม่ / วัน</div>
+                    <div className="text-[11px] text-slate-500">คลัง 100 เพลง & เพลงชุมชนฟรีไม่อั้นทุกคน</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1 sm:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-teal-700 font-bold text-xs">
+                        <Captions size={14} className="shrink-0" />
+                        <span>ใส่ซับไตเติ้ลวิดีโอด้วย AI (Gemini AI)</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
+                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.video_subtitle - (dailyUsage.video_subtitle || 0))}/{BYOK_DAILY_LIMITS.video_subtitle} วันนี้
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.video_subtitle} คลิป / วัน (ความยาวไม่เกิน 5 นาที)</div>
+                    <div className="text-[11px] text-slate-500">
+                      คลิปยาวกว่า 5 นาที หรือใช้ครบสิทธิ์แล้ว เลือกใช้ 5 เครดิต หรือโหมดฟรีบนเครื่อง (0 เครดิต ไม่จำกัดความยาว) ได้ทันที
+                    </div>
                   </div>
                 </div>
 
-                {/* Starter */}
-                <div className="p-3 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-xs">Starter (฿69 / 30 วัน)</span>
-                    <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-semibold">เริ่มต้น</span>
-                  </div>
-                  <div className="text-xs text-slate-600 space-y-1">
-                    <div className="flex items-center gap-1.5"><PhoneCall size={13} className="text-indigo-600" /> คอลเสียง: <strong>2 นาที / 1 เครดิต</strong></div>
-                    <div className="flex items-center gap-1.5"><Video size={13} className="text-purple-600" /> วิดีโอคอล: <strong>1 นาที / 1 เครดิต</strong></div>
-                    <div className="flex items-center gap-1.5"><ImageIcon size={13} className="text-slate-500" /> ส่งรูป: <strong>1 เครดิต / รูป</strong></div>
-                  </div>
-                </div>
-
-                {/* Basic */}
-                <div className="p-3 rounded-2xl border border-indigo-200 bg-indigo-50/50 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-indigo-900 text-xs">Basic (฿129 / 30 วัน)</span>
-                    <span className="text-[10px] bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded-full font-semibold">คุ้มค่า 5 เท่า</span>
-                  </div>
-                  <div className="text-xs text-slate-700 space-y-1">
-                    <div className="flex items-center gap-1.5"><PhoneCall size={13} className="text-indigo-600" /> คอลเสียง: <strong>5 นาที / 1 เครดิต</strong></div>
-                    <div className="flex items-center gap-1.5"><Video size={13} className="text-purple-600" /> วิดีโอคอล: <strong>3 นาที / 1 เครดิต</strong></div>
-                    <div className="flex items-center gap-1.5"><ImageIcon size={13} className="text-slate-500" /> ส่งรูป: <strong>1 เครดิต / รูป</strong></div>
-                  </div>
-                </div>
-
-                {/* Plus */}
-                <div className="p-3 rounded-2xl border border-purple-200 bg-purple-50/50 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-purple-900 text-xs">Plus (฿199 / 30 วัน)</span>
-                    <span className="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full font-semibold">จุใจ 10 เท่า</span>
-                  </div>
-                  <div className="text-xs text-slate-700 space-y-1">
-                    <div className="flex items-center gap-1.5"><PhoneCall size={13} className="text-indigo-600" /> คอลเสียง: <strong>10 นาที / 1 เครดิต</strong></div>
-                    <div className="flex items-center gap-1.5"><Video size={13} className="text-purple-600" /> วิดีโอคอล: <strong>5 นาที / 1 เครดิต</strong></div>
-                    <div className="flex items-center gap-1.5"><ImageIcon size={13} className="text-slate-500" /> ส่งรูป: <strong>1 เครดิต / รูป</strong></div>
-                  </div>
-                </div>
-
-                {/* Premium */}
-                <div className="p-3 rounded-2xl border border-amber-300 bg-amber-50/60 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-amber-900 text-xs">Premium (฿269 / 30 วัน)</span>
-                    <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">👑 โทรไม่อั้น</span>
-                  </div>
-                  <div className="text-xs text-slate-700 space-y-1">
-                    <div className="flex items-center gap-1.5 text-amber-800 font-bold"><PhoneCall size={13} className="text-amber-600" /> คอลเสียง: <strong>ไม่จำกัดเวลา (0 เครดิต)</strong></div>
-                    <div className="flex items-center gap-1.5 text-amber-800 font-bold"><Video size={13} className="text-amber-600" /> วิดีโอคอล: <strong>ไม่จำกัดเวลา (0 เครดิต)</strong></div>
-                    <div className="flex items-center gap-1.5"><ImageIcon size={13} className="text-slate-500" /> ส่งรูป: <strong>1 เครดิต / รูป</strong></div>
-                  </div>
-                </div>
-
-                {/* Pro */}
-                <div className="p-3 rounded-2xl border border-emerald-300 bg-emerald-50/60 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-900 text-xs">Pro (฿339 / 30 วัน)</span>
-                    <span className="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-bold">🚀 ฟรีทุกอย่าง</span>
-                  </div>
-                  <div className="text-xs text-slate-700 space-y-1">
-                    <div className="flex items-center gap-1.5 text-emerald-800 font-bold"><PhoneCall size={13} className="text-emerald-600" /> คอลเสียง: <strong>ไม่จำกัดเวลา (0 เครดิต)</strong></div>
-                    <div className="flex items-center gap-1.5 text-emerald-800 font-bold"><Video size={13} className="text-emerald-600" /> วิดีโอคอล: <strong>ไม่จำกัดเวลา (0 เครดิต)</strong></div>
-                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold"><ImageIcon size={13} className="text-emerald-600" /> ส่งรูป: <strong>ฟรี (0 เครดิต)</strong></div>
-                  </div>
-                </div>
-
-                {/* Ultra */}
-                <div className="p-3 rounded-2xl border border-indigo-300 bg-gradient-to-br from-indigo-50 to-purple-50 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-indigo-900 text-xs">Ultra (฿399 / 30 วัน)</span>
-                    <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold">💎 สูงสุด VIP</span>
-                  </div>
-                  <div className="text-xs text-slate-700 space-y-1">
-                    <div className="flex items-center gap-1.5 text-indigo-900 font-bold"><PhoneCall size={13} className="text-indigo-600" /> คอลเสียง: <strong>ไม่จำกัดเวลา (0 เครดิต)</strong></div>
-                    <div className="flex items-center gap-1.5 text-indigo-900 font-bold"><Video size={13} className="text-purple-600" /> วิดีโอคอล: <strong>ไม่จำกัดเวลา (0 เครดิต)</strong></div>
-                    <div className="flex items-center gap-1.5 text-indigo-800 font-bold"><ImageIcon size={13} className="text-indigo-600" /> ส่งรูป: <strong>ฟรี (0 เครดิต)</strong></div>
-                  </div>
+                <div className="text-[11px] text-emerald-800 leading-relaxed space-y-1">
+                  <p>
+                    *เมื่อใช้โควตาฟรี BYOK ระบบจะเลือกใช้โมเดลตระกูล Flash ที่รองรับ Google Free Tier อัตโนมัติ และหากใช้ครบสิทธิ์รายวันหรือคีย์ติดขีดจำกัด (429) สามารถกดใช้เครดิตในแอปทำต่อได้ทันที
+                  </p>
+                  <p className="text-slate-600">
+                    *หมายเหตุ: ฟีเจอร์นอกเหนือจากโควตาฟรีรายวัน หรือคลิปใส่ซับที่ยาวเกิน 5 นาที จะใช้เซิร์ฟเวอร์แบบเสียเงินของระบบและเครดิตในแอปตามปกติ
+                  </p>
                 </div>
               </div>
             </div>
@@ -693,7 +700,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
             <div className="p-3.5 bg-slate-100/80 rounded-2xl text-[11px] text-slate-500 leading-relaxed flex items-start gap-2">
               <ShieldCheck size={16} className="text-slate-400 shrink-0 mt-0.5" />
               <div>
-                <strong>ความปลอดภัยและความเป็นส่วนตัว:</strong> API Key ของคุณจะถูกจัดเก็บในเครื่องของคุณ (Browser LocalStorage) โดยตรง และจะถูกส่งไปยังเซิร์ฟเวอร์เฉพาะตอนที่คุณเริ่มคอลเพื่อเชื่อมต่อ Gemini Live เท่านั้น ไม่มีการเผยแพร่หรือส่งต่อให้บุคคลภายนอกใดๆ ทั้งสิ้น
+                <strong>ความปลอดภัยและความเป็นส่วนตัว:</strong> API Key ของคุณจะถูกจัดเก็บในเครื่องของคุณ (Browser LocalStorage) และซิงค์เฉพาะในบัญชี Google ของคุณ โดยจะถูกส่งไปยังเซิร์ฟเวอร์เฉพาะเมื่อคุณเรียกใช้งานฟีเจอร์ที่เปิดสิทธิ์ BYOK เท่านั้น ไม่มีการเผยแพร่ให้บุคคลภายนอกใดๆ ทั้งสิ้น
               </div>
             </div>
           </div>

@@ -3,6 +3,30 @@ import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const STORAGE_KEY = 'byok_gemini_api_key';
+const QUOTA_STORAGE_PREFIX = 'byok_daily_quota_v1_';
+
+export type ByokQuotaFeature = 'vocab_exam' | 'mock_test' | 'karaoke_translate' | 'video_subtitle';
+
+export const BYOK_DAILY_LIMITS: Record<ByokQuotaFeature, number> = {
+  vocab_exam: 7,
+  mock_test: 3,
+  karaoke_translate: 3,
+  video_subtitle: 1,
+};
+
+/** Max video length for BYOK free AI subtitles (5 minutes = 300s, ~12.8MB WAV base64, well below Gemini's 20MB inlineData limit) */
+export const BYOK_SUBTITLE_MAX_DURATION_SEC = 300;
+/** Safety ceiling on base64 audio payload for BYOK inlineData requests */
+export const BYOK_SUBTITLE_MAX_BASE64_BYTES = 18 * 1024 * 1024;
+
+export interface ByokDailyUsage {
+  periodKey: string; // YYYY-MM-DD in America/Los_Angeles (resets at ~15:00 ICT matching Google RPD reset)
+  vocab_exam: number;
+  mock_test: number;
+  karaoke_translate: number;
+  video_subtitle: number;
+  updatedAt: number;
+}
 
 export interface ByokRates {
   audioCallSecondsPerCredit: number; // 0 means unlimited
@@ -10,6 +34,169 @@ export interface ByokRates {
   isCallUnlimited: boolean;
   docUploadCreditCost: number; // 0 for free, 1 for 1 credit, etc.
   label: string;
+}
+
+/**
+ * Returns the current Google AI Studio daily quota window key (YYYY-MM-DD in America/Los_Angeles).
+ * Google Free Tier RPD resets at midnight Pacific Time (~14:00-15:00 น. Thailand time).
+ */
+export function getPacificPeriodKey(nowMs: number = Date.now()): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date(nowMs)); // YYYY-MM-DD
+  } catch {
+    // Fallback: UTC-8 approximation
+    const ptDate = new Date(nowMs - 8 * 60 * 60 * 1000);
+    return ptDate.toISOString().slice(0, 10);
+  }
+}
+
+export function getResetTimeLabelThai(): string {
+  return '15:00 น. (เวลาไทย)';
+}
+
+function getQuotaStorageKey(uid?: string): string {
+  const effectiveUid = uid || auth.currentUser?.uid || 'guest';
+  return `${QUOTA_STORAGE_PREFIX}${effectiveUid}`;
+}
+
+function createEmptyUsage(periodKey: string): ByokDailyUsage {
+  return {
+    periodKey,
+    vocab_exam: 0,
+    mock_test: 0,
+    karaoke_translate: 0,
+    video_subtitle: 0,
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * Synchronously read current BYOK daily usage from localStorage (resets cleanly if periodKey changed).
+ */
+export function getByokDailyUsage(uid?: string): ByokDailyUsage {
+  const todayKey = getPacificPeriodKey();
+  if (typeof window === 'undefined') return createEmptyUsage(todayKey);
+
+  try {
+    const raw = localStorage.getItem(getQuotaStorageKey(uid));
+    if (!raw) return createEmptyUsage(todayKey);
+    const parsed = JSON.parse(raw) as Partial<ByokDailyUsage>;
+    if (parsed.periodKey !== todayKey) {
+      return createEmptyUsage(todayKey);
+    }
+    return {
+      periodKey: todayKey,
+      vocab_exam: Math.max(0, Number(parsed.vocab_exam) || 0),
+      mock_test: Math.max(0, Number(parsed.mock_test) || 0),
+      karaoke_translate: Math.max(0, Number(parsed.karaoke_translate) || 0),
+      video_subtitle: Math.max(0, Number(parsed.video_subtitle) || 0),
+      updatedAt: Number(parsed.updatedAt) || Date.now(),
+    };
+  } catch {
+    return createEmptyUsage(todayKey);
+  }
+}
+
+function saveLocalUsage(usage: ByokDailyUsage, uid?: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(getQuotaStorageKey(uid), JSON.stringify(usage));
+    window.dispatchEvent(new CustomEvent('byok_quota_updated', { detail: usage }));
+  } catch (e) {
+    console.warn('Failed to persist BYOK daily usage locally:', e);
+  }
+}
+
+/**
+ * Sync BYOK daily usage across devices via Firestore users/{uid}/settings/byok_daily_usage.
+ * Takes max(local, remote) within the same Pacific period to prevent cross-device drift.
+ */
+export async function syncByokDailyUsageWithFirestore(userId?: string): Promise<ByokDailyUsage> {
+  const todayKey = getPacificPeriodKey();
+  const uid = userId || auth.currentUser?.uid;
+  const localUsage = getByokDailyUsage(uid);
+
+  if (!uid || !db) return localUsage;
+
+  try {
+    const ref = doc(db, 'users', uid, 'settings', 'byok_daily_usage');
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data() as Partial<ByokDailyUsage>;
+      if (data.periodKey === todayKey) {
+        const merged: ByokDailyUsage = {
+          periodKey: todayKey,
+          vocab_exam: Math.max(localUsage.vocab_exam, Number(data.vocab_exam) || 0),
+          mock_test: Math.max(localUsage.mock_test, Number(data.mock_test) || 0),
+          karaoke_translate: Math.max(localUsage.karaoke_translate, Number(data.karaoke_translate) || 0),
+          video_subtitle: Math.max(localUsage.video_subtitle, Number(data.video_subtitle) || 0),
+          updatedAt: Date.now(),
+        };
+        saveLocalUsage(merged, uid);
+        return merged;
+      }
+    }
+    saveLocalUsage(localUsage, uid);
+    return localUsage;
+  } catch (err) {
+    console.warn('Could not sync BYOK daily usage from Firestore:', err);
+    return localUsage;
+  }
+}
+
+export function getByokQuotaStatus(feature: ByokQuotaFeature, uid?: string): {
+  hasKey: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  canUseFree: boolean;
+  periodKey: string;
+} {
+  const hasKey = hasActiveByokKey();
+  const usage = getByokDailyUsage(uid);
+  const limit = BYOK_DAILY_LIMITS[feature];
+  const used = usage[feature] || 0;
+  const remaining = Math.max(0, limit - used);
+  return {
+    hasKey,
+    limit,
+    used,
+    remaining,
+    canUseFree: hasKey && remaining > 0,
+    periodKey: usage.periodKey,
+  };
+}
+
+/**
+ * Consumes 1 unit of a BYOK daily free quota AFTER a successful AI call.
+ */
+export async function consumeByokFreeQuota(feature: ByokQuotaFeature): Promise<ByokDailyUsage> {
+  const uid = auth.currentUser?.uid;
+  const current = await syncByokDailyUsageWithFirestore(uid);
+  const updated: ByokDailyUsage = {
+    ...current,
+    [feature]: Math.min(BYOK_DAILY_LIMITS[feature], (current[feature] || 0) + 1),
+    updatedAt: Date.now(),
+  };
+
+  saveLocalUsage(updated, uid);
+
+  if (uid && db) {
+    try {
+      const ref = doc(db, 'users', uid, 'settings', 'byok_daily_usage');
+      await setDoc(ref, updated, { merge: true });
+    } catch (err) {
+      console.warn('Failed to sync BYOK daily usage increment to Firestore:', err);
+    }
+  }
+
+  return updated;
 }
 
 /**
@@ -53,7 +240,6 @@ export async function setStoredByokKey(apiKey: string): Promise<void> {
         byokApiKey: cleanKey,
         byokUpdatedAt: Date.now()
       }, { merge: true });
-      console.log('Successfully synced BYOK key to Google account in Firestore');
     } catch (err) {
       console.error('Failed to sync BYOK key to Firestore', err);
     }
@@ -85,7 +271,6 @@ export async function removeStoredByokKey(): Promise<void> {
         byokApiKey: null,
         byokUpdatedAt: Date.now()
       }, { merge: true });
-      console.log('Successfully cleared BYOK key from Firestore');
     } catch (err) {
       console.error('Failed to clear BYOK key from Firestore', err);
     }
@@ -123,6 +308,9 @@ export async function syncByokKeyWithFirestore(userId?: string): Promise<string 
     }
 
     const localKey = getStoredByokKey();
+
+    // Also sync daily usage in background
+    syncByokDailyUsageWithFirestore(uid).catch(() => {});
 
     if (remoteKey) {
       if (remoteKey !== localKey) {
@@ -179,65 +367,14 @@ export async function validateApiKeyWithServer(apiKey: string): Promise<{ valid:
 }
 
 /**
- * Get call and upload rates for BYOK users based on their active subscription tier
+ * Get call and daily free quota benefits for BYOK users.
  */
-export function getByokCallRates(tier: SubscriptionTier): ByokRates {
-  switch (tier) {
-    case 'ULTRA':
-    case 'PRO':
-      return {
-        audioCallSecondsPerCredit: 0,
-        videoCallSecondsPerCredit: 0,
-        isCallUnlimited: true,
-        docUploadCreditCost: 0, // Free photo upload!
-        label: 'คอล & วิดีโอคอลไม่อั้น (0 เครดิต) + ส่งรูปฟรี'
-      };
-
-    case 'PREMIUM':
-      return {
-        audioCallSecondsPerCredit: 0,
-        videoCallSecondsPerCredit: 0,
-        isCallUnlimited: true,
-        docUploadCreditCost: 1, // 1 credit for photo
-        label: 'คอล & วิดีโอคอลไม่อั้น (0 เครดิต) + ส่งรูป 1 เครดิต'
-      };
-
-    case 'PLUS':
-      return {
-        audioCallSecondsPerCredit: 600, // 10 minutes
-        videoCallSecondsPerCredit: 300, // 5 minutes
-        isCallUnlimited: false,
-        docUploadCreditCost: 1,
-        label: 'คอลเสียง 10 นาที / วิดีโอคอล 5 นาที ต่อ 1 เครดิต (ส่งรูป 1 เครดิต)'
-      };
-
-    case 'BASIC':
-      return {
-        audioCallSecondsPerCredit: 300, // 5 minutes
-        videoCallSecondsPerCredit: 180, // 3 minutes
-        isCallUnlimited: false,
-        docUploadCreditCost: 1,
-        label: 'คอลเสียง 5 นาที / วิดีโอคอล 3 นาที ต่อ 1 เครดิต (ส่งรูป 1 เครดิต)'
-      };
-
-    case 'TESTING':
-      return {
-        audioCallSecondsPerCredit: 0,
-        videoCallSecondsPerCredit: 0,
-        isCallUnlimited: true,
-        docUploadCreditCost: 0, // Free photo & document upload during 14-day Testing trial!
-        label: 'สิทธิ์ทดลองใช้ 14 วัน: คอลเสียง & วิดีโอคอลไม่อั้น (0 เครดิต) + ส่งรูป/เอกสารฟรี'
-      };
-
-    case 'STARTER':
-    case 'FREE':
-    default:
-      return {
-        audioCallSecondsPerCredit: 120, // 2 minutes
-        videoCallSecondsPerCredit: 60,  // 1 minute
-        isCallUnlimited: false,
-        docUploadCreditCost: 1,
-        label: 'คอลเสียง 2 นาที / วิดีโอคอล 1 นาที ต่อ 1 เครดิต (ส่งรูป 1 เครดิต)'
-      };
-  }
+export function getByokCallRates(_tier?: SubscriptionTier): ByokRates {
+  return {
+    audioCallSecondsPerCredit: 0,
+    videoCallSecondsPerCredit: 0,
+    isCallUnlimited: true,
+    docUploadCreditCost: 0,
+    label: 'คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 3 • ใส่ซับ AI 1 คลิป/วัน (≤5 นาที)'
+  };
 }

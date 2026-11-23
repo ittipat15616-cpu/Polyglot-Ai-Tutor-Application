@@ -1,15 +1,34 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Edit3, Type, Settings2, PlayCircle, Loader2, RefreshCcw, MonitorUp, MonitorOff, Plus, Minus, ImagePlus, Trash2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Clock, Key, X, Sparkles, FileText, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Phone, Edit3, Type, Settings2, PlayCircle, Loader2, RefreshCcw, MonitorUp, MonitorOff, Plus, Minus, ImagePlus, Trash2, ChevronLeft, ChevronRight, Maximize2, Minimize2, Clock, Key, X, Sparkles, FileText, ZoomIn, ZoomOut, RotateCcw, CheckCircle2, Circle, Compass, HelpCircle, MapPin, MessageSquare, Volume1, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import HanziWriter from 'hanzi-writer';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { deductCredit, loadUserSubscription, getTotalCredits } from '../services/subscriptionService';
 import { getStoredByokKey, hasActiveByokKey, getByokCallRates } from '../services/byokService';
 import { isAdminEmail, isSuperAdminEmail } from '../types/subscription';
+import { emitAppLiveTranscript } from '../services/appSpeechBus';
+import {
+  loadAllRoleplayProgress,
+  saveRoleplayMissionProgress,
+  RoleplayProgressRecord,
+} from '../services/userPersistence';
+import {
+  getNextMission,
+  RoleplayCallConfig,
+  RoleplayCorrectionStyle,
+  RoleplayMission,
+  RoleplayReportData,
+} from '../data/roleplay';
+import { RoleplayLobby } from './roleplay/RoleplayLobby';
+import { RoleplayBriefingModal } from './roleplay/RoleplayBriefingModal';
+import { CustomMissionModal } from './roleplay/CustomMissionModal';
+import { RoleplayReportModal } from './roleplay/RoleplayReportModal';
+import { playObjectiveChime } from './roleplay/ttsHelper';
 import InsufficientCreditsModal from './InsufficientCreditsModal';
 
 export type AvatarState = 
@@ -247,6 +266,59 @@ export default function VideoCallArea({
   const [isByokActive, setIsByokActive] = useState<boolean>(hasActiveByokKey());
   const [isTestingBannerDismissed, setIsTestingBannerDismissed] = useState(false);
 
+  // === REAL-LIFE ROLEPLAY MISSIONS STATE ===
+  const roleplayLang: 'EN' | 'CN' = activeLang === 'CN' ? 'CN' : 'EN';
+  const [callMode, setCallMode] = useState<'free_talk' | 'roleplay'>('free_talk');
+  const [roleplayProgressMap, setRoleplayProgressMap] = useState<Record<string, RoleplayProgressRecord>>({});
+  const [isLoadingRoleplayProgress, setIsLoadingRoleplayProgress] = useState(false);
+  const [briefingMission, setBriefingMission] = useState<RoleplayMission | null>(null);
+  const [showCustomMissionModal, setShowCustomMissionModal] = useState(false);
+  const [activeRoleplayConfig, setActiveRoleplayConfig] = useState<RoleplayCallConfig | null>(null);
+  const [showMidCallBriefing, setShowMidCallBriefing] = useState(false);
+  const [roleplayObjectives, setRoleplayObjectives] = useState<[boolean, boolean, boolean]>([false, false, false]);
+  const [roleplayObjectiveToast, setRoleplayObjectiveToast] = useState<string | null>(null);
+  const [isRequestingHint, setIsRequestingHint] = useState(false);
+  const [isRequestingSlower, setIsRequestingSlower] = useState(false);
+
+  // Post-call Free Report Card state
+  const [reportMission, setReportMission] = useState<RoleplayMission | null>(null);
+  const [reportData, setReportData] = useState<RoleplayReportData | null>(null);
+  const [isReportLoading, setIsReportLoading] = useState(false);
+  const [reportSavedToCloud, setReportSavedToCloud] = useState(false);
+
+  // Refs for reading fresh values during call lifecycle / disconnect
+  const activeRoleplayConfigRef = useRef<RoleplayCallConfig | null>(null);
+  const roleplayObjectivesRef = useRef<[boolean, boolean, boolean]>([false, false, false]);
+  const transcriptsRef = useRef<{ id: string; role: 'user' | 'model'; text: string }[]>([]);
+  const callDurationSecondsRef = useRef(0);
+  const toastTimerRef = useRef<number | null>(null);
+
+  useEffect(() => { transcriptsRef.current = transcripts; }, [transcripts]);
+  useEffect(() => { callDurationSecondsRef.current = callDurationSeconds; }, [callDurationSeconds]);
+  useEffect(() => { roleplayObjectivesRef.current = roleplayObjectives; }, [roleplayObjectives]);
+
+  // Load Roleplay progress from Firebase + localStorage whenever language or auth user changes
+  useEffect(() => {
+    let cancelled = false;
+    const refreshProgress = async () => {
+      setIsLoadingRoleplayProgress(true);
+      try {
+        const data = await loadAllRoleplayProgress(roleplayLang);
+        if (!cancelled) setRoleplayProgressMap(data);
+      } finally {
+        if (!cancelled) setIsLoadingRoleplayProgress(false);
+      }
+    };
+    refreshProgress();
+    const unsub = onAuthStateChanged(auth, () => {
+      refreshProgress();
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [roleplayLang]);
+
   useEffect(() => {
     loadUserSubscription().then(setUserSub);
     const handleSubUpdate = () => {
@@ -319,7 +391,7 @@ export default function VideoCallArea({
           if (interval > 0 && (sec - 1) % interval === 0) {
             const { success } = await deductCredit(1);
             if (!success) {
-              setIsCalling(false);
+              handleEndCall();
               setShowInsufficientModal(true);
             }
           }
@@ -331,7 +403,7 @@ export default function VideoCallArea({
           if ((sec - 1) % 30 === 0) {
             const { success } = await deductCredit(currentRate);
             if (!success) {
-              setIsCalling(false);
+              handleEndCall();
               setShowInsufficientModal(true);
             }
           }
@@ -351,7 +423,7 @@ export default function VideoCallArea({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startCallWithCreditCheck = async () => {
+  const startCallWithCreditCheck = async (): Promise<boolean> => {
     const sub = await loadUserSubscription();
     const byokActive = hasActiveByokKey();
     const rates = getByokCallRates(sub.tier);
@@ -364,7 +436,7 @@ export default function VideoCallArea({
     const minRequired = isUnlimited ? 0 : 1;
     if (getTotalCredits(sub) < minRequired) {
       setShowInsufficientModal(true);
-      return;
+      return false;
     }
     // Always start call with camera OFF
     setIsVidOn(false);
@@ -376,6 +448,151 @@ export default function VideoCallArea({
       });
     }
     setIsCalling(true);
+    return true;
+  };
+
+  const handleStartRoleplayCall = async (
+    mission: RoleplayMission,
+    options: { assistMode: boolean; correctionStyle: RoleplayCorrectionStyle }
+  ) => {
+    const config: RoleplayCallConfig = {
+      mission,
+      assistMode: options.assistMode,
+      correctionStyle: options.correctionStyle,
+    };
+    activeRoleplayConfigRef.current = config;
+    setActiveRoleplayConfig(config);
+    setRoleplayObjectives([false, false, false]);
+    roleplayObjectivesRef.current = [false, false, false];
+    setRoleplayObjectiveToast(null);
+    setShowMidCallBriefing(false);
+    setBriefingMission(null);
+    setIsDocBoardOpen(false);
+    setBoardData(null);
+
+    const started = await startCallWithCreditCheck();
+    if (!started) {
+      activeRoleplayConfigRef.current = null;
+      setActiveRoleplayConfig(null);
+    } else {
+      setAvatarState('greeting');
+    }
+  };
+
+  const handleRequestRoleplayHint = () => {
+    const rpConfig = activeRoleplayConfigRef.current;
+    if (!rpConfig || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || isRequestingHint) return;
+    const remaining = rpConfig.mission.objectivesEn.filter((_, i) => !roleplayObjectivesRef.current[i]);
+    wsRef.current.send(
+      JSON.stringify({
+        type: 'roleplay_request_hint',
+        remainingObjectives: remaining,
+      })
+    );
+    setIsRequestingHint(true);
+    window.setTimeout(() => setIsRequestingHint(false), 3000);
+  };
+
+  const handleRequestSpeakSlower = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || isRequestingSlower) return;
+    wsRef.current.send(JSON.stringify({ type: 'roleplay_speak_slower' }));
+    setIsRequestingSlower(true);
+    window.setTimeout(() => setIsRequestingSlower(false), 2500);
+  };
+
+  const handleEndCall = () => {
+    const rpConfig = activeRoleplayConfigRef.current;
+    const snapshotTranscript = [...transcriptsRef.current];
+    const snapshotObjectives: [boolean, boolean, boolean] = [
+      Boolean(roleplayObjectivesRef.current[0]),
+      Boolean(roleplayObjectivesRef.current[1]),
+      Boolean(roleplayObjectivesRef.current[2]),
+    ];
+    const snapshotDuration = callDurationSecondsRef.current;
+
+    activeRoleplayConfigRef.current = null;
+    setActiveRoleplayConfig(null);
+    setShowMidCallBriefing(false);
+    setRoleplayObjectiveToast(null);
+
+    setIsCalling(false);
+    setIsCcEnabled(false);
+    setAvatarState('idle');
+    clearAskWord?.();
+    clearAskPdfUrl?.();
+
+    // If ending a Roleplay mission call, generate the 100% FREE Post-Call Report Card & persist stars to Firebase
+    if (rpConfig) {
+      const mission = rpConfig.mission;
+      setReportMission(mission);
+      setReportData(null);
+      setIsReportLoading(true);
+      setReportSavedToCloud(false);
+
+      (async () => {
+        try {
+          const resp = await fetch('/api/roleplay-report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mission,
+              lang: roleplayLang,
+              transcript: snapshotTranscript.map((t) => ({ role: t.role, text: t.text })),
+              completedObjectives: snapshotObjectives,
+              durationSeconds: snapshotDuration,
+              byokKey: getStoredByokKey() || undefined,
+            }),
+          });
+          const data: RoleplayReportData = await resp.json();
+          setReportData(data);
+
+          if (!mission.isCustom && data) {
+            const savedRecord = await saveRoleplayMissionProgress({
+              missionId: mission.id,
+              lang: roleplayLang,
+              stars: data.stars,
+              score: data.overallScore,
+              objectivesCompletedCount: data.completedObjectives.filter(Boolean).length,
+              isCustom: mission.isCustom,
+            });
+            if (savedRecord) {
+              setReportSavedToCloud(true);
+              setRoleplayProgressMap((prev) => ({
+                ...prev,
+                [mission.id]: savedRecord,
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('[Roleplay Report] Failed to fetch report:', err);
+          const objCount = snapshotObjectives.filter(Boolean).length;
+          const fallbackScore = objCount === 3 ? 85 : objCount === 2 ? 70 : objCount === 1 ? 55 : 0;
+          const stars = objCount === 3 ? 3 : objCount === 2 ? 2 : objCount === 1 ? 1 : 0;
+          setReportData({
+            missionId: mission.id,
+            missionTitle: mission.titleTh,
+            lang: roleplayLang,
+            durationSeconds: snapshotDuration,
+            completedObjectives: snapshotObjectives,
+            objectivesText: mission.objectives,
+            stars,
+            overallScore: fallbackScore,
+            metrics: {
+              fluency: fallbackScore,
+              grammar: fallbackScore,
+              vocabulary: fallbackScore,
+              naturalness: fallbackScore,
+            },
+            summaryTh: 'จบภารกิจเรียบร้อยครับ สามารถกดเล่นซ้ำเพื่อเก็บ 3 ดาวเต็มหรือลองด่านถัดไปได้เลยครับ',
+            improvements: [],
+            keyVocab: [],
+            usedAiAnalysis: false,
+          });
+        } finally {
+          setIsReportLoading(false);
+        }
+      })();
+    }
   };
 
   const docExtractedTextRef = useRef<string | null>(null);
@@ -395,6 +612,9 @@ export default function VideoCallArea({
   // Handle askWord auto start
   useEffect(() => {
     if (askWord) {
+      setCallMode('free_talk');
+      activeRoleplayConfigRef.current = null;
+      setActiveRoleplayConfig(null);
       setBoardData({
         items: [{
           word: askWord,
@@ -417,6 +637,9 @@ export default function VideoCallArea({
   // Handle askPdfUrl auto start
   useEffect(() => {
     if (askPdfUrl) {
+      setCallMode('free_talk');
+      activeRoleplayConfigRef.current = null;
+      setActiveRoleplayConfig(null);
       setDocPdfFile(askPdfUrl);
       setDocImageBase64(null); // Clear image if any
       setDocImageError(false);
@@ -647,7 +870,10 @@ export default function VideoCallArea({
       try {
         activeAudioNodesRef.current = [];
 
-        const langName = activeLang === 'CN' ? 'Chinese' : activeLang === 'TH' ? 'Thai' : 'English';
+        const rpConfig = activeRoleplayConfigRef.current;
+        const langName = rpConfig
+          ? (roleplayLang === 'CN' ? 'Chinese' : 'English')
+          : (activeLang === 'CN' ? 'Chinese' : activeLang === 'TH' ? 'Thai' : 'English');
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const params = new URLSearchParams({
           lang: langName,
@@ -656,9 +882,13 @@ export default function VideoCallArea({
         if (auth.currentUser) {
           params.set('userId', auth.currentUser.uid);
         }
-        const includeAskWord = Boolean(askWord && lastHandledAskWordRef.current !== askWord);
-        if (includeAskWord) params.set('askWord', askWord);
-        if (isSeriousMode) params.set('seriousMode', 'true');
+        const includeAskWord = !rpConfig && Boolean(askWord && lastHandledAskWordRef.current !== askWord);
+        if (includeAskWord && askWord) params.set('askWord', askWord);
+        if (!rpConfig && isSeriousMode) params.set('seriousMode', 'true');
+        if (rpConfig) {
+          params.set('roleplayMode', 'true');
+          params.set('voiceGender', rpConfig.mission.aiVoiceGender);
+        }
 
         // BYOK: If user configured their own Gemini API key, pass it to WebSocket
         const activeByokKey = getStoredByokKey();
@@ -672,13 +902,23 @@ export default function VideoCallArea({
         await new Promise<void>((resolve, reject) => {
           socket.onopen = () => {
             if (!sessionActive) return;
-            if (includeAskWord) lastHandledAskWordRef.current = askWord;
+            if (rpConfig) {
+              socket.send(
+                JSON.stringify({
+                  type: 'init_roleplay',
+                  mission: rpConfig.mission,
+                  assistMode: rpConfig.assistMode,
+                  correctionStyle: rpConfig.correctionStyle,
+                })
+              );
+            }
+            if (includeAskWord && askWord) lastHandledAskWordRef.current = askWord;
             reconnectAttemptsRef.current = 0;
             setIsLiveConnected(true);
             setAvatarState('listening');
             resolve();
           };
-          socket.onerror = () => reject(new Error('?????????????????? AI server ???'));
+          socket.onerror = () => reject(new Error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ AI ได้'));
         });
 
         socket.onmessage = (event) => {
@@ -702,6 +942,10 @@ export default function VideoCallArea({
           }
 
           if (message.type === 'transcript') {
+            emitAppLiveTranscript(
+              message.role === 'model' ? 'model' : 'user',
+              String(message.text || '')
+            );
             setTranscripts(prev => {
               const last = prev[prev.length - 1];
               if (last && last.role === message.role) {
@@ -710,6 +954,26 @@ export default function VideoCallArea({
               }
               return [...prev, { id: Math.random().toString(), role: message.role, text: message.text }];
             });
+          }
+
+          if (message.type === 'roleplay_objective_completed') {
+            const idx = Number(message.objectiveIndex) - 1;
+            const currentRp = activeRoleplayConfigRef.current;
+            if (idx >= 0 && idx <= 2 && !roleplayObjectivesRef.current[idx]) {
+              const nextObjs: [boolean, boolean, boolean] = [...roleplayObjectivesRef.current] as [boolean, boolean, boolean];
+              nextObjs[idx] = true;
+              roleplayObjectivesRef.current = nextObjs;
+              setRoleplayObjectives(nextObjs);
+              playObjectiveChime();
+              setAvatarState('celebrating');
+
+              const objTitle = currentRp?.mission?.objectives?.[idx] || `ภารกิจข้อที่ ${idx + 1}`;
+              setRoleplayObjectiveToast(`สำเร็จภารกิจข้อ ${idx + 1}: ${objTitle}`);
+              if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+              toastTimerRef.current = window.setTimeout(() => {
+                setRoleplayObjectiveToast(null);
+              }, 4200);
+            }
           }
 
           if (message.type === 'board_update') {
@@ -1114,15 +1378,15 @@ export default function VideoCallArea({
 
   return (
     <div className="flex flex-col h-full w-full gap-3 relative p-4" style={{ background: 'transparent' }}>
-      {/* ── Testing Plan BYOK Promotion Pill Banner (Slim & Dismissible) ── */}
-      {userSub?.tier === 'TESTING' && !isByokActive && !isTestingBannerDismissed && (
+      {/* ── BYOK Unlimited Free Call Promotion Banner (Slim & Dismissible) ── */}
+      {(userSub?.tier === 'TESTING' || userSub?.tier === 'FREE') && !isByokActive && !isTestingBannerDismissed && (
         <div className="shrink-0 flex items-center justify-between gap-3 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-300 text-emerald-950 shadow-xs">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-base shrink-0">🎁</span>
             <div className="text-xs truncate sm:whitespace-normal leading-snug">
-              <span className="font-bold text-emerald-900">สิทธิ์พิเศษบัญชีใหม่ 14 วัน:</span>{' '}
+              <span className="font-bold text-emerald-900">คอล AI ฟรีไม่อั้นทุกแพ็กเกจ:</span>{' '}
               <span className="text-emerald-800">
-                โทรเสียง & วิดีโอคอลฟรีไม่จำกัด (0 เครดิต) เพียงเชื่อมต่อ Google API Key ฟรีของคุณ
+                โทรเสียง & วิดีโอคอลฟรีไม่จำกัดเวลา (0 เครดิต) แม้ใช้ Free Plan เพียงเชื่อมต่อ Google API Key ฟรีของคุณ (BYOK)
               </span>
             </div>
           </div>
@@ -1147,36 +1411,128 @@ export default function VideoCallArea({
         </div>
       )}
 
+      {/* ── Mode Switcher: Free Talk Tutor vs Real-Life Roleplay Missions (Shown before call starts) ── */}
+      {!isCalling && (activeLang === 'EN' || activeLang === 'CN') && (
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setCallMode('free_talk')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                callMode === 'free_talk'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>คุยอิสระกับติวเตอร์</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCallMode('roleplay')}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                callMode === 'roleplay'
+                  ? 'bg-white text-indigo-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Compass className="w-4 h-4" />
+              <span>ภารกิจจำลองสถานการณ์ (100 ด่าน)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Roleplay Lobby View (when Roleplay mode is selected and not currently in a call) ── */}
+      {!isCalling && callMode === 'roleplay' && (activeLang === 'EN' || activeLang === 'CN') ? (
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          <RoleplayLobby
+            activeLang={roleplayLang}
+            progressMap={roleplayProgressMap}
+            isLoadingProgress={isLoadingRoleplayProgress}
+            onSelectMission={(mission) => setBriefingMission(mission)}
+            onOpenCustomMission={() => setShowCustomMissionModal(true)}
+          />
+        </div>
+      ) : (
       <div className="flex flex-row flex-1 w-full gap-2 md:gap-4 relative min-h-0">
         {/* Left: User & AI Camera Column */}
       <div className="w-28 md:w-1/3 lg:w-1/4 flex flex-col gap-2 md:gap-4 shrink-0">
-        <div className="flex justify-between items-center bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-          <span className="text-sm font-bold text-gray-700 ml-2">โหมดฝึกพูดจริงจัง</span>
-          <button 
-            onClick={() => {
-              const nextMode = !isSeriousMode;
-              setIsSeriousMode(nextMode);
-              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({
-                  type: 'toggle_serious_mode',
-                  seriousMode: nextMode
-                }));
-              }
-            }}
-            className={`w-12 h-6 rounded-full transition-colors relative ${isSeriousMode ? 'bg-indigo-600' : 'bg-gray-300'}`}
-            title={isSeriousMode ? "คลิกเพื่อสลับกลับเป็นโหมดปกติ (สอนเป็นภาษาไทย)" : "คลิกเพื่อเปิดโหมดฝึกพูดจริงจัง (สอนเป็นภาษาอังกฤษ/จีนล้วน)"}
-          >
-            <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${isSeriousMode ? 'left-7' : 'left-1'}`}></div>
-          </button>
-        </div>
+        {!activeRoleplayConfig && (
+          <div className="flex justify-between items-center bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+            <span className="text-sm font-bold text-gray-700 ml-2">โหมดฝึกพูดจริงจัง</span>
+            <button 
+              onClick={() => {
+                const nextMode = !isSeriousMode;
+                setIsSeriousMode(nextMode);
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({
+                    type: 'toggle_serious_mode',
+                    seriousMode: nextMode
+                  }));
+                }
+              }}
+              className={`w-12 h-6 rounded-full transition-colors relative ${isSeriousMode ? 'bg-indigo-600' : 'bg-gray-300'}`}
+              title={isSeriousMode ? "คลิกเพื่อสลับกลับเป็นโหมดปกติ (สอนเป็นภาษาไทย)" : "คลิกเพื่อเปิดโหมดฝึกพูดจริงจัง (สอนเป็นภาษาอังกฤษ/จีนล้วน)"}
+            >
+              <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${isSeriousMode ? 'left-7' : 'left-1'}`}></div>
+            </button>
+          </div>
+        )}
         {/* Cameras Wrapper: Always Column */}
         <div className="flex flex-col gap-2 md:gap-4 flex-1 min-h-0 shrink-0">
-          {/* AI Panel — Mr.Pe (EN only) or elegant placeholder (CN/TH) */}
+          {/* AI Panel — Roleplay Character Profile (No Avatar) OR Free Talk Tutor */}
           <div
             className="flex-1 overflow-hidden relative rounded-2xl border border-indigo-100"
-            style={{ minHeight: 220, background: 'linear-gradient(145deg,#f5f3ff,#ede9fe)' }}
+            style={{
+              minHeight: 220,
+              background: activeRoleplayConfig
+                ? 'linear-gradient(155deg,#f8fafc,#eef2ff)'
+                : 'linear-gradient(145deg,#f5f3ff,#ede9fe)',
+            }}
           >
-            {activeLang === 'EN' ? (
+            {activeRoleplayConfig ? (
+              /* Clean Character Profile Card for Roleplay Mode (No Avatar) */
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2.5 p-4 text-center">
+                <div
+                  className={`w-20 h-20 rounded-full flex items-center justify-center shadow-md font-bold text-2xl text-white tracking-wide transition-all ${
+                    isSpeaking ? 'ring-4 ring-indigo-300 scale-105' : isLiveConnected ? 'ring-2 ring-indigo-200' : ''
+                  }`}
+                  style={{
+                    background:
+                      activeRoleplayConfig.mission.aiVoiceGender === 'male'
+                        ? 'linear-gradient(135deg,#334155,#4f46e5)'
+                        : 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+                  }}
+                >
+                  {activeRoleplayConfig.mission.aiRoleName
+                    .split(/\s+/)
+                    .map((w) => w[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </div>
+                <div className="space-y-0.5 max-w-full px-1">
+                  <p className="text-base font-bold text-slate-900 truncate">
+                    {activeRoleplayConfig.mission.aiRoleName}
+                  </p>
+                  <p className="text-xs font-semibold text-indigo-700 leading-snug">
+                    {activeRoleplayConfig.mission.aiRoleTitleTh}
+                  </p>
+                  <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{activeRoleplayConfig.mission.location}</span>
+                  </p>
+                </div>
+                {isLiveConnected && (
+                  <div className="flex gap-1 items-end h-4 mt-1">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div key={i} className="wave-bar" style={{ animationDelay: `${i * 0.12}s` }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : activeLang === 'EN' ? (
               /* Elegant placeholder for Mr.Pe (EN) */
               <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
                 <div
@@ -1223,7 +1579,13 @@ export default function VideoCallArea({
             )}
             {/* Label */}
             <div className="absolute bottom-2 right-2 badge badge-indigo text-[9px]">
-              {activeLang === 'EN' ? 'Mr.Pe' : activeLang === 'CN' ? 'ครูจีน AI' : 'ครูไทย AI'}
+              {activeRoleplayConfig
+                ? activeRoleplayConfig.mission.aiRoleName
+                : activeLang === 'EN'
+                ? 'Mr.Pe'
+                : activeLang === 'CN'
+                ? 'ครูจีน AI'
+                : 'ครูไทย AI'}
             </div>
           </div>
           
@@ -1282,7 +1644,7 @@ export default function VideoCallArea({
                       title="สิทธิ์ Owner: กำลังจำลองเรตของแพลนนี้"
                     >
                       <Key size={11} className="text-amber-600" />
-                      <span>👑 Owner ({userSub?.tier || 'ULTRA'}): {activeRates.isCallUnlimited ? 'โทรฟรีไม่อั้น (0 เครดิต)' : isVidOn ? `วิดีโอ 1 เครดิต/${Math.round(activeRates.videoCallSecondsPerCredit / 60)} นาที` : `เสียง 1 เครดิต/${Math.round(activeRates.audioCallSecondsPerCredit / 60)} นาที`}</span>
+                      <span>👑 Owner ({userSub?.tier === 'ULTRA' ? 'VIP' : (userSub?.tier || 'VIP')}): {activeRates.isCallUnlimited ? 'โทรฟรีไม่อั้น (0 เครดิต)' : isVidOn ? `วิดีโอ 1 เครดิต/${Math.round(activeRates.videoCallSecondsPerCredit / 60)} นาที` : `เสียง 1 เครดิต/${Math.round(activeRates.audioCallSecondsPerCredit / 60)} นาที`}</span>
                     </button>
                   ) : (
                     <button
@@ -1291,7 +1653,7 @@ export default function VideoCallArea({
                       title="สิทธิ์ Owner: โหมดปกติ (คลิกเพื่อตั้งค่า BYOK)"
                     >
                       <Key size={11} className="text-amber-600" />
-                      <span>👑 Owner ({userSub?.tier || 'ULTRA'}): {isVidOn ? 'วิดีโอ 3 เครดิต/30วิ' : 'เสียง 1 เครดิต/30วิ'}</span>
+                      <span>👑 Owner ({userSub?.tier === 'ULTRA' ? 'VIP' : (userSub?.tier || 'VIP')}): {isVidOn ? 'วิดีโอ 3 เครดิต/30วิ' : 'เสียง 1 เครดิต/30วิ'}</span>
                     </button>
                   )
                 ) : isRegularAdmin ? (
@@ -1425,16 +1787,10 @@ export default function VideoCallArea({
                 <div className="font-black text-[13px] leading-none w-5 h-5 flex items-center justify-center border-2 rounded-sm border-current">CC</div>
               </button>
               <button
-                onClick={() => { 
-                  setIsCalling(false); 
-                  setIsCcEnabled(false);
-                  setAvatarState('idle'); 
-                  clearAskWord?.(); 
-                  clearAskPdfUrl?.(); 
-                }}
+                onClick={handleEndCall}
                 className="p-3 rounded-xl text-white transition-all hover:scale-105"
                 style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: '0 2px 12px rgba(239,68,68,0.35)' }}
-                title="วางสาย"
+                title={activeRoleplayConfig ? 'จบภารกิจ & ดูใบสรุปผลฟรี' : 'วางสาย'}
               >
                 <PhoneOff size={20} />
               </button>
@@ -1445,8 +1801,8 @@ export default function VideoCallArea({
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.97 }}
               onClick={async () => {
-                await startCallWithCreditCheck();
-                setAvatarState('greeting');
+                const ok = await startCallWithCreditCheck();
+                if (ok) setAvatarState('greeting');
               }}
               className="flex items-center gap-2.5 text-white font-bold px-7 py-3 rounded-2xl text-sm"
               style={{ background: 'linear-gradient(135deg,#7c3aed,#5b21b6)', boxShadow: '0 4px 18px rgba(124,58,237,0.4)' }}
@@ -1489,7 +1845,15 @@ export default function VideoCallArea({
               [...transcripts].reverse().map(t => (
                 <div key={t.id} className={t.role === 'user' ? 'text-right' : 'text-left'}>
                   <span className={t.role === 'user' ? 'text-amber-400 font-bold mr-2' : 'text-emerald-400 font-bold mr-2'}>
-                    {t.role === 'user' ? 'คุณ:' : (activeLang === 'CN' ? 'หลี่เหล่าซือ:' : activeLang === 'EN' ? 'Mr.Pe:' : 'ครูไทย AI:')}
+                    {t.role === 'user'
+                      ? 'คุณ:'
+                      : activeRoleplayConfig
+                      ? `${activeRoleplayConfig.mission.aiRoleName}:`
+                      : activeLang === 'CN'
+                      ? 'หลี่เหล่าซือ:'
+                      : activeLang === 'EN'
+                      ? 'Mr.Pe:'
+                      : 'ครูไทย AI:'}
                   </span>
                   <span className="text-gray-100 leading-relaxed">{t.text}</span>
                 </div>
@@ -1501,6 +1865,113 @@ export default function VideoCallArea({
 
       {/* Right: Board/Canvas Wrapper */}
       <div className={`flex-1 min-w-0 flex flex-col gap-2 md:gap-4 overflow-y-auto pr-1 pb-4`}>
+        {/* Live Roleplay Mission HUD (Shown during active Roleplay call) */}
+        {isCalling && activeRoleplayConfig && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 shrink-0 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600">
+                  <span>ภารกิจที่กำลังทำ</span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-emerald-700 tabular-nums">
+                    สำเร็จแล้ว {roleplayObjectives.filter(Boolean).length}/3 ข้อ
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 truncate mt-0.5">
+                  {activeRoleplayConfig.mission.titleTh}
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowMidCallBriefing(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>ดูการ์ดภารกิจ</span>
+                </button>
+
+                {activeRoleplayConfig.assistMode && (
+                  <button
+                    type="button"
+                    onClick={handleRequestRoleplayHint}
+                    disabled={isRequestingHint || !isLiveConnected}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+                  >
+                    {isRequestingHint ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    )}
+                    <span>ขอตัวช่วย</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleRequestSpeakSlower}
+                  disabled={isRequestingSlower || !isLiveConnected}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50"
+                >
+                  <Volume1 className="w-3.5 h-3.5" />
+                  <span>พูดช้าลง</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live 3-Objective Checklist */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {activeRoleplayConfig.mission.objectives.map((objText, idx) => {
+                const done = roleplayObjectives[idx];
+                return (
+                  <div
+                    key={idx}
+                    className={`flex items-start gap-2 p-2.5 rounded-xl border text-xs transition-all ${
+                      done
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-900 font-medium'
+                        : 'bg-slate-50/70 border-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-slate-300 shrink-0 mt-0.5" />
+                    )}
+                    <span className={done ? 'line-through decoration-emerald-500/60' : ''}>
+                      {idx + 1}. {objText}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Brief objective completed toast */}
+            {roleplayObjectiveToast && (
+              <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow-xs">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{roleplayObjectiveToast}</span>
+              </div>
+            )}
+
+            {/* All 3 Objectives Completed Banner */}
+            {roleplayObjectives.every(Boolean) && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-emerald-900">
+                  <Award className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>เยี่ยมมาก! คุณทำครบทั้ง 3 ภารกิจแล้ว สามารถคุยปิดท้ายหรือจบสายดูใบสรุปผลฟรีได้เลย</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEndCall}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  จบสาย & ดูใบสรุปผลฟรี
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Doc Board (Optional) */}
         {isDocBoardOpen && (
@@ -1703,7 +2174,10 @@ export default function VideoCallArea({
           {/* Canvas Toolbar */}
           <div className="bg-indigo-50/60 border-b border-indigo-100 p-3 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2 text-sm font-semibold text-indigo-700">
-              <Edit3 size={16} /> บอร์ดการเรียน {activeLang === 'EN' ? 'ภาษาอังกฤษ' : activeLang === 'CN' ? 'ภาษาจีน' : 'ภาษาไทย'}
+              <Edit3 size={16} />{' '}
+              {activeRoleplayConfig
+                ? 'กระดานตัวช่วย & ประโยคแนะนำระหว่างภารกิจ'
+                : `บอร์ดการเรียน ${activeLang === 'EN' ? 'ภาษาอังกฤษ' : activeLang === 'CN' ? 'ภาษาจีน' : 'ภาษาไทย'}`}
             </div>
           </div>
 
@@ -1721,29 +2195,42 @@ export default function VideoCallArea({
                   className="flex flex-col items-center justify-center h-full w-full text-gray-400 p-8 text-center"
                 >
                   <Edit3 size={48} className="mb-4 text-indigo-300" />
-                  <p className="text-xl font-semibold text-gray-700">กระดานเรียน AI Tutor</p>
-                  <p className="text-sm mt-2 max-w-sm mx-auto text-gray-500">รอให้อาจารย์ AI นำคำศัพท์ ไวยากรณ์ หรือประโยคขึ้นหน้ากระดาน...</p>
-                  <button
-                    onClick={() => {
-                      setBoardData(activeLang === 'CN' ? {
-                        items: [
-                          { word: '你好', pinyin: 'nǐ hǎo', meaning: 'สวัสดี', example: '你好！很高兴认识你。' },
-                          { word: '谢谢', pinyin: 'xiè xie', meaning: 'ขอบคุณ', example: '谢谢你的帮助。' },
-                          { word: '再见', pinyin: 'zài jiàn', meaning: 'ลาก่อน', example: '明天见，再见！' },
-                          { word: '苹果', pinyin: 'píng guǒ', meaning: 'แอปเปิ้ล', example: '我喜欢吃苹果。' }
-                        ]
-                      } : {
-                        items: [
-                          { word: 'Welcome', pinyin: '/ˈwel.kəm/', meaning: 'ยินดีต้อนรับ', example: 'Welcome to your AI Tutor session!' },
-                          { word: 'Vocabulary', pinyin: '/vəˈkæb.jə.ler.i/', meaning: 'คำศัพท์', example: 'Let us practice 20 vocabulary words together.' },
-                          { word: 'Conversation', pinyin: '/ˌkɑːn.vɚˈseɪ.ʃən/', meaning: 'การสนทนา', example: 'Practice real-time speaking conversation.' }
-                        ]
-                      });
-                    }}
-                    className="mt-4 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-semibold border border-indigo-200 transition-colors shadow-sm cursor-pointer"
-                  >
-                    ✨ ทดลองแสดงตัวอย่างคำศัพท์บนกระดาน
-                  </button>
+                  {activeRoleplayConfig ? (
+                    <>
+                      <p className="text-lg font-semibold text-slate-700">กระดานตัวช่วยพร้อมใช้งาน</p>
+                      <p className="text-sm mt-2 max-w-md mx-auto text-slate-500 leading-relaxed">
+                        {activeRoleplayConfig.assistMode
+                          ? 'ถ้านึกประโยคไม่ออก กดปุ่ม "ขอตัวช่วย" ด้านบนได้เลย AI จะขึ้นประโยคตัวอย่างพร้อมคำแปลบนกระดานนี้ให้ทันที'
+                          : 'สนทนาโต้ตอบตามธรรมชาติได้เลย หากลืมรายละเอียดภารกิจสามารถกดปุ่ม "ดูการ์ดภารกิจ" ด้านบนได้ตลอดเวลา'}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xl font-semibold text-gray-700">กระดานเรียน AI Tutor</p>
+                      <p className="text-sm mt-2 max-w-sm mx-auto text-gray-500">รอให้อาจารย์ AI นำคำศัพท์ ไวยากรณ์ หรือประโยคขึ้นหน้ากระดาน...</p>
+                      <button
+                        onClick={() => {
+                          setBoardData(activeLang === 'CN' ? {
+                            items: [
+                              { word: '你好', pinyin: 'nǐ hǎo', meaning: 'สวัสดี', example: '你好！很高兴认识你。' },
+                              { word: '谢谢', pinyin: 'xiè xie', meaning: 'ขอบคุณ', example: '谢谢你的帮助。' },
+                              { word: '再见', pinyin: 'zài jiàn', meaning: 'ลาก่อน', example: '明天见，再见！' },
+                              { word: '苹果', pinyin: 'píng guǒ', meaning: 'แอปเปิ้ล', example: '我喜欢吃苹果。' }
+                            ]
+                          } : {
+                            items: [
+                              { word: 'Welcome', pinyin: '/ˈwel.kəm/', meaning: 'ยินดีต้อนรับ', example: 'Welcome to your AI Tutor session!' },
+                              { word: 'Vocabulary', pinyin: '/vəˈkæb.jə.ler.i/', meaning: 'คำศัพท์', example: 'Let us practice 20 vocabulary words together.' },
+                              { word: 'Conversation', pinyin: '/ˌkɑːn.vɚˈseɪ.ʃən/', meaning: 'การสนทนา', example: 'Practice real-time speaking conversation.' }
+                            ]
+                          });
+                        }}
+                        className="mt-4 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-semibold border border-indigo-200 transition-colors shadow-sm cursor-pointer"
+                      >
+                        ✨ ทดลองแสดงตัวอย่างคำศัพท์บนกระดาน
+                      </button>
+                    </>
+                  )}
                 </motion.div>
              )}
           </AnimatePresence>
@@ -1751,6 +2238,7 @@ export default function VideoCallArea({
         </div>
       </div>
       </div>
+      )}
 
       {/* Fullscreen Document/Image Portal Modal */}
       {isPdfFullscreen && (docImageBase64 || docPdfFile) && typeof document !== 'undefined' && createPortal(
@@ -1940,6 +2428,69 @@ export default function VideoCallArea({
           }
         }}
       />
+
+      {/* Roleplay Pre-Call Untimed Briefing Modal */}
+      {briefingMission && (
+        <RoleplayBriefingModal
+          mission={briefingMission}
+          activeLang={roleplayLang}
+          mode="briefing"
+          existingProgress={roleplayProgressMap[briefingMission.id]}
+          onStartMission={(options) => handleStartRoleplayCall(briefingMission, options)}
+          onClose={() => setBriefingMission(null)}
+        />
+      )}
+
+      {/* Roleplay Mid-Call Reference Card Modal (Re-openable anytime without disconnecting) */}
+      {showMidCallBriefing && activeRoleplayConfig && (
+        <RoleplayBriefingModal
+          mission={activeRoleplayConfig.mission}
+          activeLang={roleplayLang}
+          mode="reference"
+          completedObjectives={roleplayObjectives}
+          onClose={() => setShowMidCallBriefing(false)}
+        />
+      )}
+
+      {/* Custom Roleplay Mission Creator Modal */}
+      {showCustomMissionModal && (
+        <CustomMissionModal
+          activeLang={roleplayLang}
+          byokKey={getStoredByokKey()}
+          onMissionGenerated={(mission) => {
+            setShowCustomMissionModal(false);
+            setBriefingMission(mission);
+          }}
+          onClose={() => setShowCustomMissionModal(false)}
+        />
+      )}
+
+      {/* 100% Free Post-Call Roleplay Report Card Modal */}
+      {reportMission && (
+        <RoleplayReportModal
+          mission={reportMission}
+          nextMission={getNextMission(reportMission)}
+          report={reportData}
+          isLoading={isReportLoading}
+          savedToCloud={reportSavedToCloud}
+          onRetry={() => {
+            const target = reportMission;
+            setReportMission(null);
+            setReportData(null);
+            setBriefingMission(target);
+          }}
+          onNextMission={(next) => {
+            setReportMission(null);
+            setReportData(null);
+            setBriefingMission(next);
+          }}
+          onBackToLobby={() => {
+            setReportMission(null);
+            setReportData(null);
+            setCallMode('roleplay');
+          }}
+        />
+      )}
     </div>
   );
 }

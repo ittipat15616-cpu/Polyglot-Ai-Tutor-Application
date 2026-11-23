@@ -1,11 +1,17 @@
 import { saveVocabTestResult, loadVocabTestResultsHistory, VocabTestResultRecord } from "../services/userPersistence";
-import { getStoredByokKey } from "../services/byokService";
 import { deductCredit, loadUserSubscription, getTotalCredits } from "../services/subscriptionService";
+import {
+  consumeByokFreeQuota,
+  getByokQuotaStatus,
+  getStoredByokKey,
+  syncByokDailyUsageWithFirestore,
+} from "../services/byokService";
 import React, { useState, useEffect, useRef } from 'react';
-import { History, X, Award, FileSignature, Play, Settings, ArrowRight, CheckCircle, XCircle, RotateCcw, Volume2, VolumeX, Sliders, Languages } from 'lucide-react';
+import { History, X, Award, FileSignature, Play, Settings, ArrowRight, CheckCircle, XCircle, RotateCcw, Volume2, VolumeX, Sliders, Languages, Key } from 'lucide-react';
 import { allCNVocab, allENVocab, VocabWord } from '../data/vocabData';
 import AnnotationToolbar, { AnnotationState } from './AnnotationToolbar';
 import AnnotatableArea from './AnnotatableArea';
+import ByokQuotaFallbackModal, { QuotaFallbackReason } from './ByokQuotaFallbackModal';
 
 interface VocabExamAreaProps {
   activeLang: 'EN' | 'CN' | 'TH';
@@ -50,11 +56,28 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
 
   const filteredWords = levelFilter === 'ALL' ? fullVocab : fullVocab.filter(v => v.level === levelFilter);
 
-  const [selectedVoice, setSelectedVoice] = useState(lang === 'CN' ? 'zh-CN-XiaoxiaoNeural' : 'en-US-JennyNeural');
+  const [selectedVoice, setSelectedVoice] = useState(lang === 'CN' ? 'zh-CN-XiaoxiaoNeural' : 'en-US-ChristopherNeural');
   const [speakingRate, setSpeakingRate] = useState('default');
   const [autoRepeat, setAutoRepeat] = useState(false);
   const [history, setHistory] = useState<VocabTestResultRecord[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('vocab_exam'));
+  const [fallbackModal, setFallbackModal] = useState<{ open: boolean; reason: QuotaFallbackReason }>({
+    open: false,
+    reason: 'byok_daily_exhausted',
+  });
+
+  useEffect(() => {
+    const refreshQuota = () => setByokQuota(getByokQuotaStatus('vocab_exam'));
+    syncByokDailyUsageWithFirestore().then(refreshQuota);
+    window.addEventListener('byok_key_updated', refreshQuota);
+    window.addEventListener('byok_quota_updated', refreshQuota);
+    return () => {
+      window.removeEventListener('byok_key_updated', refreshQuota);
+      window.removeEventListener('byok_quota_updated', refreshQuota);
+    };
+  }, []);
+
   const fetchHistory = async () => {
     const list = await loadVocabTestResultsHistory();
     setHistory(list);
@@ -64,7 +87,7 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
   }, []);
 
   useEffect(() => {
-    setSelectedVoice(lang === 'CN' ? 'zh-CN-XiaoxiaoNeural' : 'en-US-JennyNeural');
+    setSelectedVoice(lang === 'CN' ? 'zh-CN-XiaoxiaoNeural' : 'en-US-ChristopherNeural');
   }, [lang]);
 
   let parsedStart = 0;
@@ -214,18 +237,22 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
       return;
     }
 
-    // Check credit balance before starting to inform user
-    try {
-      const subState = await loadUserSubscription();
-      if (getTotalCredits(subState) < 1) {
-        const wantTopup = confirm('⚡ เครดิต AI ของคุณไม่เพียงพอ (การส่งตรวจข้อสอบคำศัพท์ใช้ 1 เครดิต)\nต้องการไปที่หน้าเติมเครดิตเพื่อเริ่มใช้งานหรือไม่?');
-        if (wantTopup) {
-          window.dispatchEvent(new CustomEvent('open_subscription_modal', { detail: { tab: 'topup' } }));
+    // Check BYOK free daily quota OR credit balance before starting
+    const latestQuota = getByokQuotaStatus('vocab_exam');
+    setByokQuota(latestQuota);
+    if (!latestQuota.canUseFree) {
+      try {
+        const subState = await loadUserSubscription();
+        if (getTotalCredits(subState) < 1) {
+          setFallbackModal({
+            open: true,
+            reason: 'insufficient_credits',
+          });
+          return;
         }
-        return;
+      } catch (e) {
+        console.error('Check credit error:', e);
       }
-    } catch (e) {
-      console.error('Check credit error:', e);
     }
     
     setExamWords(finalWords);
@@ -274,15 +301,25 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
     }));
   };
 
-  const finishExam = async () => {
+  const finishExam = async (forceUseCredits = false) => {
     clearInterval(timerRef.current);
-    
-    // Deduct 1 credit for submitting vocab exam
-    const { success } = await deductCredit('vocab_exam');
-    if (!success) {
-      alert('⚡ เครดิต AI ของคุณไม่เพียงพอ (การส่งตรวจข้อสอบคำศัพท์ใช้ 1 เครดิต)\nกรุณากดเติมเครดิตเพื่อส่งตรวจคำตอบ');
-      window.dispatchEvent(new CustomEvent('open_subscription_modal', { detail: { tab: 'topup' } }));
-      return;
+
+    const quota = getByokQuotaStatus('vocab_exam');
+    const byokKey = getStoredByokKey();
+    const shouldTryByok = !forceUseCredits && quota.hasKey && quota.canUseFree && Boolean(byokKey);
+
+    if (!shouldTryByok) {
+      if (!forceUseCredits && quota.hasKey && !quota.canUseFree) {
+        setFallbackModal({ open: true, reason: 'byok_daily_exhausted' });
+        return;
+      }
+
+      // Deduct 1 credit for submitting vocab exam via server paid key
+      const { success } = await deductCredit('vocab_exam');
+      if (!success) {
+        setFallbackModal({ open: true, reason: 'insufficient_credits' });
+        return;
+      }
     }
 
     const preliminaryAnswers: Record<string, Answer> = {};
@@ -311,23 +348,37 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
     
     setAnswers(preliminaryAnswers);
     setIsAIGrading(true);
+    let abortedForFallback = false;
 
     try {
       if (apiPayload.length > 0) {
-        const byokKey = getStoredByokKey();
         const response = await fetch('/api/grade-vocab', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            ...(byokKey ? { 'x-byok-key': byokKey } : {})
           },
-          body: JSON.stringify({ answers: apiPayload, lang, byokKey: byokKey || undefined })
+          body: JSON.stringify({
+            answers: apiPayload,
+            lang,
+            useByokQuota: shouldTryByok,
+            byokKey: shouldTryByok ? byokKey : null,
+          })
         });
         if (!response.ok) {
-          const errText = await response.text();
-          throw new Error("HTTP " + response.status + ": " + errText);
+          const errBody = await response.json().catch(() => ({}));
+          if (shouldTryByok && (response.status === 429 || errBody.byokQuotaExhausted)) {
+            abortedForFallback = true;
+            setFallbackModal({ open: true, reason: 'byok_google_429' });
+            return;
+          }
+          throw new Error(errBody.error || "HTTP " + response.status);
         }
         const aiResults = await response.json();
+
+        if (shouldTryByok) {
+          await consumeByokFreeQuota('vocab_exam');
+          setByokQuota(getByokQuotaStatus('vocab_exam'));
+        }
         
         const finalAnswers = { ...preliminaryAnswers };
         if (Array.isArray(aiResults)) {
@@ -339,6 +390,8 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
         }
         setAnswers(finalAnswers);
         evaluatedAnswers = finalAnswers;
+      } else {
+        evaluatedAnswers = preliminaryAnswers;
       }
     } catch (e) {
       console.error("AI grading failed", e);
@@ -366,35 +419,37 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
       evaluatedAnswers = fallbackAnswers;
     } finally {
       setIsAIGrading(false);
-      setExamState('RESULT');
-      
-      let finalCorrectWords = 0;
-      let finalCorrectTrans = 0;
-      const items: any[] = [];
-      examWords.forEach(w => {
-        const ans = evaluatedAnswers[w.id];
-        if (ans?.isWordCorrect) finalCorrectWords++;
-        if (ans?.isTranslationCorrect) finalCorrectTrans++;
-        items.push({
-          wordId: w.id,
-          targetWord: w.word,
-          targetTranslation: w.translations[0] || '',
-          userWord: ans?.userWord || '',
-          userTranslation: ans?.userTranslation || '',
-          isWordCorrect: !!ans?.isWordCorrect,
-          isTranslationCorrect: !!ans?.isTranslationCorrect
+      if (!abortedForFallback) {
+        setExamState('RESULT');
+        
+        let finalCorrectWords = 0;
+        let finalCorrectTrans = 0;
+        const items: any[] = [];
+        examWords.forEach(w => {
+          const ans = evaluatedAnswers[w.id];
+          if (ans?.isWordCorrect) finalCorrectWords++;
+          if (ans?.isTranslationCorrect) finalCorrectTrans++;
+          items.push({
+            wordId: w.id,
+            targetWord: w.word,
+            targetTranslation: w.translations[0] || '',
+            userWord: ans?.userWord || '',
+            userTranslation: ans?.userTranslation || '',
+            isWordCorrect: !!ans?.isWordCorrect,
+            isTranslationCorrect: !!ans?.isTranslationCorrect
+          });
         });
-      });
-      saveVocabTestResult({
-        lang,
-        levelFilter,
-        scopeRange,
-        correctWords: finalCorrectWords,
-        correctTrans: finalCorrectTrans,
-        totalQuestions: examWords.length,
-        items,
-        createdAt: Date.now()
-      });
+        saveVocabTestResult({
+          lang,
+          levelFilter,
+          scopeRange,
+          correctWords: finalCorrectWords,
+          correctTrans: finalCorrectTrans,
+          totalQuestions: examWords.length,
+          items,
+          createdAt: Date.now()
+        });
+      }
     }
   };
 
@@ -511,8 +566,9 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                         </>
                       ) : (
                         <>
-                          <option value="en-US-JennyNeural">👩 Jenny (หญิง - คมชัดที่สุด)</option>
+                          <option value="en-US-ChristopherNeural">👨 Christopher (ชาย - คมชัดมาตรฐาน)</option>
                           <option value="en-US-GuyNeural">👨 Guy (ชาย - นุ่มนวล)</option>
+                          <option value="en-US-JennyNeural">👩 Jenny (หญิง - คมชัด)</option>
                           <option value="en-US-AriaNeural">👩 Aria (หญิง - สดใส)</option>
                           <option value="en-GB-SoniaNeural">👩 Sonia (หญิง - บริติช UK)</option>
                         </>
@@ -551,14 +607,32 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                   </div>
                 </div>
 
-                <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs text-amber-800">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    ⚡ ค่าส่งตรวจข้อสอบ
-                  </span>
-                  <span className="font-bold bg-amber-200/80 px-2 py-0.5 rounded-md text-amber-900">
-                    1 เครดิต / ครั้ง
-                  </span>
-                </div>
+                {byokQuota.hasKey ? (
+                  <div className={`mb-3 px-3 py-2 rounded-xl border flex items-center justify-between text-xs ${
+                    byokQuota.canUseFree
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-800'
+                  }`}>
+                    <span className="flex items-center gap-1.5 font-semibold">
+                      <Key size={13} />
+                      {byokQuota.canUseFree ? 'สิทธิ์ฟรี BYOK วันนี้' : 'ครบสิทธิ์ฟรี BYOK วันนี้'}
+                    </span>
+                    <span className="font-bold px-2 py-0.5 rounded-md bg-white/80">
+                      {byokQuota.canUseFree
+                        ? `ฟรี! เหลือ ${byokQuota.remaining}/${byokQuota.limit}`
+                        : 'ใช้ต่อ 1 เครดิต/ครั้ง'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200/80 rounded-xl flex items-center justify-between text-xs text-amber-800">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      ⚡ ค่าส่งตรวจข้อสอบ
+                    </span>
+                    <span className="font-bold bg-amber-200/80 px-2 py-0.5 rounded-md text-amber-900">
+                      1 เครดิต / ครั้ง
+                    </span>
+                  </div>
+                )}
 
                 <button 
                   id="tutorial-exam-start-btn"
@@ -865,6 +939,20 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
           </div>
         </div>
       )}
+      <ByokQuotaFallbackModal
+        isOpen={fallbackModal.open}
+        onClose={() => setFallbackModal((prev) => ({ ...prev, open: false }))}
+        feature="vocab_exam"
+        reason={fallbackModal.reason}
+        creditCost={1}
+        isBusy={isAIGrading}
+        onUseCredits={() => {
+          setFallbackModal((prev) => ({ ...prev, open: false }));
+          if (examState === 'TESTING') {
+            finishExam(true);
+          }
+        }}
+      />
     </div>
   );
 }

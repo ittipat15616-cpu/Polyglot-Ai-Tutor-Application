@@ -7,7 +7,7 @@ import {
 import generatePayload from 'promptpay-qr';
 import QRCode from 'qrcode';
 import {
-  SubscriptionTier, TIER_CONFIGS, TOPUP_OPTIONS, PROMPTPAY_CONFIG, UserSubscriptionState, isAdminEmail, isSuperAdminEmail
+  SubscriptionTier, TIER_CONFIGS, PAID_TIER_IDS, TOPUP_OPTIONS, PROMPTPAY_CONFIG, UserSubscriptionState, isAdminEmail, isSuperAdminEmail
 } from '../types/subscription';
 import {
   loadUserSubscription, upgradeTier, addTopupCredits, getTotalCredits, setOwnerTestCredits
@@ -91,9 +91,6 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
       if (price === 69) return 59;
       if (price === 129) return 115;
       if (price === 199) return 179;
-      if (price === 269) return 239;
-      if (price === 339) return 299;
-      if (price === 399) return 359;
     }
     return price;
   };
@@ -214,11 +211,11 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                   <div className="h-8 w-px bg-white/20" />
                   <div className="text-left text-xs">
                     <div className="text-indigo-200">
-                      ⚡ แพ็กเกจ (10 วัน): <span className="font-bold text-white">{subState.dailyCredits}/{subState.maxDailyCredits}</span>
+                      ⚡ แพ็กเกจ (30 วัน): <span className="font-bold text-white">{subState.dailyCredits}/{subState.maxDailyCredits}</span>
                     </div>
-                    {subState.maxDailyCredits > 0 && subState.nextCreditResetAt && (
+                    {subState.maxDailyCredits > 0 && subState.expiresAt && !(isAdminEmail(user?.email) && !isSuperAdmin) && !(isSuperAdmin && subState.tier === 'ULTRA') && (
                       <div className="text-[10px] text-indigo-300">
-                        รีเฟรชใน: <CountdownTimer expiresAt={subState.nextCreditResetAt} onExpire={() => loadUserSubscription().then(setSubState)} />
+                        หมดอายุใน: <CountdownTimer expiresAt={subState.expiresAt} onExpire={() => loadUserSubscription().then(setSubState)} />
                       </div>
                     )}
                     <div className="text-indigo-200">
@@ -349,14 +346,14 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                       </div>
                     </div>
                     <span className="text-[11px] text-teal-700 font-medium bg-white/70 px-2.5 py-1 rounded-lg border border-teal-100 self-start sm:self-auto">
-                      💡 สิทธิ์ทดลองไม่มีเครดิต AI ให้ หากต้องการคอล AI สามารถซื้อแพ็กเกจหรือเติมเครดิตแยกได้
+                      💡 เชื่อมต่อ API Key ส่วนตัว (BYOK) เพื่อคอล AI ฟรีไม่อั้น หรือซื้อแพ็กเกจ/เติมเครดิตเพิ่มได้
                     </span>
                   </div>
                 )}
 
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-base font-bold text-slate-800">เลือกแพ็กเกจที่เหมาะกับคุณ (อายุ 30 วัน)</h3>
-                  <span className="text-xs text-slate-500">⚡ เครดิตแพ็กเกจจะรีเฟรชกลับมาเต็มทุกๆ 10 วัน</span>
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <h3 className="text-base font-bold text-slate-800">เลือกแพ็กเกจรายเดือน (3 ราคาเข้าใจง่าย • อายุ 30 วัน)</h3>
+                  <span className="text-xs text-slate-500">⚡ รับเครดิตเต็มก้อนใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)</span>
                 </div>
 
                 {/* Owner Simulation Panel (Only visible to ittipat15616@gmail.com) */}
@@ -409,6 +406,19 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                         <button
                           type="button"
                           onClick={async () => {
+                            const newState = await upgradeTier('TESTING');
+                            setSubState(newState);
+                            if (onSubscriptionUpdated) onSubscriptionUpdated(newState);
+                            soundFx.playCorrect('MATCH');
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-teal-100 hover:bg-teal-200 text-teal-800 border border-teal-300 font-bold text-xs transition-all shadow-xs cursor-pointer"
+                          title="จำลองแพลนทดลอง 14 วัน (Testing Plan)"
+                        >
+                          🧪 จำลอง Testing
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
                             const newState = await upgradeTier('ULTRA');
                             await setOwnerTestCredits(10000);
                             setSubState(newState);
@@ -416,10 +426,10 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                             soundFx.playVictory();
                           }}
                           className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-extrabold text-xs transition-all flex items-center gap-1 shadow-sm cursor-pointer"
-                          title="รีเซ็ตกลับเป็น Ultra Plan ตลอดชีพ"
+                          title="รีเซ็ตกลับเป็นสิทธิ์ Owner VIP ตลอดชีพ"
                         >
                           <Crown size={12} />
-                          <span>รีเซ็ตกลับ Ultra Plan</span>
+                          <span>รีเซ็ตกลับ Owner VIP</span>
                         </button>
                       </div>
                     </div>
@@ -433,12 +443,12 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                       <Key size={18} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-xs text-white">มี Gemini API Key ส่วนตัว? (โหมด BYOK)</span>
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-400 text-slate-950">คุ้มค่ายิ่งขึ้น</span>
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-400 text-slate-950">โทรฟรีไม่อั้นทุกแพ็กเกจ</span>
                       </div>
-                      <p className="text-[11px] text-indigo-200/80 mt-0.5">
-                        คอลนานขึ้นสูงสุด 10 เท่า! และสำหรับแพ็ก Premium, Pro, Ultra รับสิทธิ์คอล AI และวิดีโอคอลไม่อั้น 0 เครดิต (Pro/Ultra อัปโหลดรูปฟรี)
+                      <p className="text-[11px] text-indigo-200/90 mt-0.5">
+                        เชื่อมต่อ API Key ส่วนตัว คอลเสียง & วิดีโอคอลกับ AI ฟรีไม่จำกัดเวลา (0 เครดิต) ใช้ได้ทุกแพ็กเกจ รวมถึง Free Plan!
                       </p>
                     </div>
                   </div>
@@ -447,38 +457,38 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                       onClose();
                       window.dispatchEvent(new CustomEvent('open-byok-modal'));
                     }}
-                    className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs shadow-xs transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs shadow-xs transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
                   >
                     <Key size={13} />
                     ตั้งค่า API Key
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(Object.keys(TIER_CONFIGS) as SubscriptionTier[]).filter(k => isSuperAdmin || k !== 'TESTING').map((tierKey) => {
+                {/* 3 Paid Monthly Tiers Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {PAID_TIER_IDS.map((tierKey) => {
                     const cfg = TIER_CONFIGS[tierKey];
                     const isCurrent = subState?.tier === tierKey;
+                    const isRecommended = tierKey === 'BASIC';
 
                     return (
                       <motion.div
                         key={tierKey}
                         whileHover={{ y: -3 }}
                         className={`bg-white rounded-2xl p-5 border shadow-sm flex flex-col justify-between relative overflow-hidden transition-all ${
-                          isCurrent ? 'ring-2 ring-indigo-600 border-indigo-500' : 'border-slate-200 hover:border-indigo-300'
+                          isCurrent
+                            ? 'ring-2 ring-indigo-600 border-indigo-500'
+                            : isRecommended
+                            ? 'border-emerald-400 ring-1 ring-emerald-200 shadow-md'
+                            : 'border-slate-200 hover:border-indigo-300'
                         }`}
                       >
-                        {isCurrent && (
+                        {isCurrent ? (
                           <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl shadow flex items-center gap-1">
                             {isSuperAdmin ? '👑 กำลังจำลองใช้อยู่' : 'แพ็กเกจปัจจุบัน'}
-                            {subState?.expiresAt && tierKey !== 'FREE' && (
+                            {subState?.expiresAt && (
                               <span className="font-mono text-indigo-200">
-                                ({isSuperAdmin ? (
-                                  subState.tier === 'ULTRA' ? (
-                                    'ตลอดชีพ'
-                                  ) : (
-                                    <CountdownTimer expiresAt={subState.expiresAt} onExpire={() => loadUserSubscription().then(setSubState)} />
-                                  )
-                                ) : isAdminEmail(user?.email) ? (
+                                ({isAdminEmail(user?.email) && !isSuperAdmin ? (
                                   'ตลอดชีพ'
                                 ) : (
                                   <CountdownTimer expiresAt={subState.expiresAt} onExpire={() => loadUserSubscription().then(setSubState)} />
@@ -486,23 +496,42 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                               </span>
                             )}
                           </div>
-                        )}
+                        ) : isRecommended ? (
+                          <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl shadow-xs">
+                            ยอดนิยม
+                          </div>
+                        ) : null}
 
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${cfg.badgeColor}`}>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${cfg.badgeColor}`}>
                               {cfg.name}
                             </span>
                           </div>
 
-                          <div className="flex items-baseline gap-1 my-3">
+                          <div className="flex items-baseline gap-1 my-3 tabular-nums">
                             <span className="text-3xl font-black text-slate-900">
-                              {cfg.price === 0 ? 'ฟรี' : isPartner && cfg.price > 0 ? (<span><span className="line-through text-slate-400 text-xl mr-2">฿{cfg.price}</span>฿{getDiscountedPrice(cfg.price)}</span>) : `฿${cfg.price}`}
+                              {isPartner ? (
+                                <span>
+                                  <span className="line-through text-slate-400 text-xl mr-2">฿{cfg.price}</span>
+                                  ฿{getDiscountedPrice(cfg.price)}
+                                </span>
+                              ) : (
+                                `฿${cfg.price}`
+                              )}
                             </span>
-                            {cfg.price > 0 && <span className="text-xs text-slate-500 font-medium">/ 30 วัน</span>}
+                            <span className="text-xs text-slate-500 font-medium">/ 30 วัน</span>
                           </div>
 
-                          <p className="text-xs text-slate-600 mb-4 line-clamp-2">{cfg.description}</p>
+                          <div className="mb-3 px-3 py-2 rounded-xl bg-indigo-50/80 border border-indigo-100 flex items-center justify-between text-xs tabular-nums">
+                            <span className="text-indigo-900 font-bold flex items-center gap-1">
+                              <Zap size={14} className="text-amber-500" />
+                              {cfg.dailyCredits} เครดิต
+                            </span>
+                            <span className="text-indigo-600 font-medium text-[11px]">ใช้ได้ตลอด 30 วัน</span>
+                          </div>
+
+                          <p className="text-xs text-slate-600 mb-4 leading-relaxed">{cfg.description}</p>
 
                           <div className="space-y-2 border-t border-slate-100 pt-3 mb-5">
                             {cfg.features.map((feat, idx) => (
@@ -522,23 +551,21 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                             }
                             handleSelectTier(tierKey);
                           }}
-                          disabled={isCurrent || (!isSuperAdmin && cfg.price === 0) || (!user && cfg.price !== 0)}
+                          disabled={isCurrent || !user}
                           className={`w-full py-2.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-1.5 ${
                             isCurrent
                               ? 'bg-slate-100 text-slate-400 cursor-default'
-                              : (!isSuperAdmin && cfg.price === 0)
-                              ? 'bg-slate-100 text-slate-500 cursor-default'
-                              : (!user && cfg.price !== 0)
+                              : !user
                               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                               : isSuperAdmin
                               ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-md hover:shadow-lg active:scale-95 cursor-pointer'
+                              : isRecommended
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg cursor-pointer'
                               : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg cursor-pointer'
                           }`}
                         >
                           {isCurrent
                             ? (isSuperAdmin ? '👑 กำลังจำลองใช้อยู่' : 'กำลังใช้อยู่')
-                            : (cfg.price === 0 && !isSuperAdmin)
-                            ? 'ใช้งานฟรี'
                             : !user
                             ? 'กรุณาเข้าสู่ระบบ'
                             : isSuperAdmin
@@ -549,14 +576,65 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                     );
                   })}
                 </div>
+
+                {/* Compact Free Plan Overview Card */}
+                {(() => {
+                  const freeCfg = TIER_CONFIGS.FREE;
+                  const isFreeCurrent = subState?.tier === 'FREE';
+                  return (
+                    <div
+                      className={`mt-5 bg-white rounded-2xl p-4 sm:p-5 border transition-all ${
+                        isFreeCurrent ? 'ring-2 ring-indigo-500 border-indigo-400' : 'border-slate-200'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${freeCfg.badgeColor}`}>
+                            {freeCfg.name}
+                          </span>
+                          <span className="text-lg font-black text-slate-900">ฟรี (฿0)</span>
+                          <span className="text-xs text-slate-500">• ใช้งานฟรีตลอดชีพ ไม่จำกัดเวลา</span>
+                        </div>
+                        <div className="shrink-0">
+                          {isFreeCurrent ? (
+                            <span className="inline-flex items-center px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
+                              {isSuperAdmin ? '👑 กำลังจำลองใช้อยู่' : 'แพ็กเกจปัจจุบัน'}
+                            </span>
+                          ) : isSuperAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() => handleSelectTier('FREE')}
+                              className="px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-xs transition-all cursor-pointer"
+                            >
+                              👑 สลับมาจำลอง Free Plan
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold text-slate-400">สิทธิ์พื้นฐานของทุกบัญชี</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-3">
+                        {freeCfg.features.map((feat, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs text-slate-700">
+                            <CheckCircle className="text-emerald-500 shrink-0 mt-0.5" size={14} />
+                            <span>{feat}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               /* Topup Credits Store */
               <div className="max-w-3xl mx-auto">
                 <div className="text-center mb-6">
-                  <h3 className="text-xl font-bold text-slate-800">เติมเครดิต AI สกัดเอง (ไม่มีวันหมดอายุ)</h3>
+                  <h3 className="text-xl font-bold text-slate-800">เติมเครดิต AI แยก (ไม่มีวันหมดอายุ)</h3>
                   <p className="text-sm text-slate-500 mt-1">
-                    คอลเสียง (ปิดกล้อง) 1 เครดิต / 30 วิ | วิดีโอคอล (เปิดกล้อง) 3 เครดิต / 30 วิ | ส่งรูปภาพ หรือ ตรวจข้อสอบ 3 เครดิต / ครั้ง
+                    คอลเสียง (ปิดกล้อง) 1 เครดิต / 30 วิ | วิดีโอคอล (เปิดกล้อง) 3 เครดิต / 30 วิ | ส่งรูปภาพ หรือ ตรวจข้อสอบ 3 เครดิต / ครั้ง | ใส่ซับวิดีโอ AI 5 เครดิต / ครั้ง
+                  </p>
+                  <p className="text-xs text-emerald-700 font-semibold mt-1.5">
+                    💡 หรือเชื่อมต่อ Gemini API Key ส่วนตัว (โหมด BYOK) เพื่อคอล AI ฟรีไม่อั้น (0 เครดิต) ได้ทุกแพ็กเกจ!
                   </p>
                 </div>
 
@@ -606,7 +684,7 @@ export default function SubscriptionModal({ isOpen, onClose, onSubscriptionUpdat
                     <HelpCircle size={16} /> ลำดับการหักเครดิตในระบบ:
                   </div>
                   <div>
-                    1. ระบบจะหักจาก <span className="font-bold text-indigo-700">เครดิตแพ็กเกจ (รีเฟรชทุก 10 วัน)</span> ก่อนเสมอ (ถ้ามี)
+                    1. ระบบจะหักจาก <span className="font-bold text-indigo-700">เครดิตแพ็กเกจรายเดือน (30 วัน — หมดอายุพร้อมแพ็กเกจ)</span> ก่อนเสมอ (ถ้ามี)
                   </div>
                   <div>
                     2. เมื่อเครดิตแพ็กเกจหมด ระบบจึงจะมาหักจาก <span className="font-bold text-emerald-700">เครดิตเติมเอง</span>

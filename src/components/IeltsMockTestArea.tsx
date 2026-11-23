@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Clock, FileText, Headphones, Edit3, Mic, CheckCircle, ChevronRight, Send, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, Clock, FileText, Headphones, Edit3, Mic, CheckCircle, ChevronRight, Send, Key } from 'lucide-react';
 import { getFirebaseStorageUrl } from '../utils/firebaseStorage';
 import DocumentGallery from './DocumentGallery';
 import PdfViewer from './PdfViewer';
 import IeltsAnswerSheet from './IeltsAnswerSheet';
 import IeltsMockTestResult from './IeltsMockTestResult';
+import ByokQuotaFallbackModal, { QuotaFallbackReason } from './ByokQuotaFallbackModal';
 import { gradeIeltsExam, IeltsGradeResult } from '../utils/ieltsGrading';
 import { gradeWritingTask, gradeSpeaking, AiGradingResult } from '../utils/AiGradingService';
 import { saveMockTestResult } from '../services/userPersistence';
 import { deductCredit } from '../services/subscriptionService';
+import {
+  consumeByokFreeQuota,
+  getByokQuotaStatus,
+  getStoredByokKey,
+  syncByokDailyUsageWithFirestore,
+} from '../services/byokService';
 
 interface IeltsMockTestAreaProps {
   examId: string; // e.g. "IELTS_Mock_1"
@@ -37,6 +44,24 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
   const audioChunksRef = useRef<BlobPart[]>([]);
   const [result, setResult] = useState<IeltsGradeResult | AiGradingResult | null>(null);
   const answersRef = useRef(answers);
+  const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('mock_test'));
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fallbackModal, setFallbackModal] = useState<{ open: boolean; reason: QuotaFallbackReason }>({
+    open: false,
+    reason: 'byok_daily_exhausted',
+  });
+
+  useEffect(() => {
+    const refresh = () => setByokQuota(getByokQuotaStatus('mock_test'));
+    syncByokDailyUsageWithFirestore().then(refresh);
+    window.addEventListener('byok_key_updated', refresh);
+    window.addEventListener('byok_quota_updated', refresh);
+    return () => {
+      window.removeEventListener('byok_key_updated', refresh);
+      window.removeEventListener('byok_quota_updated', refresh);
+    };
+  }, []);
 
   // Normalize examId from "IELTS_Mock_1" to "IELTS_Mock_Test_1"
   const normalizedExamId = examId.replace('IELTS_Mock_', 'IELTS_Mock_Test_');
@@ -124,15 +149,37 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
     setAnswers(prev => ({ ...prev, [qNum]: ans }));
   };
 
-  const handleSubmit = async () => {
-    // Check & deduct credit (3 credits for exam grading)
-    const { success } = await deductCredit('mock_test');
-    if (!success) {
-      alert('⚡ เครดิต AI ของคุณไม่เพียงพอ (ส่งตรวจข้อสอบใช้ 3 เครดิต) กรุณากดปุ่มแพ็กเกจสมาชิกด้านบนเพื่อเติมเครดิตหรืออัปเกรดแพ็กเกจ');
-      return;
+  const handleSubmit = async (forceUseCredits = false) => {
+    if (!activeSkill) return;
+    setErrorMessage(null);
+
+    const isAiSkill = activeSkill === 'writing' || activeSkill === 'speaking';
+
+    if (activeSkill === 'speaking') {
+      const speakingKeys = Object.keys(answersRef.current).filter(k => k.startsWith('speakingAudio_'));
+      if (speakingKeys.length === 0) {
+        setErrorMessage('กรุณากดปุ่มไมโครโฟนเพื่อบันทึกเสียงตอบคำถามอย่างน้อย 1 ข้อก่อนกดส่งข้อสอบครับ');
+        return;
+      }
     }
 
-    if (!activeSkill) return;
+    const quota = getByokQuotaStatus('mock_test');
+    const byokKey = getStoredByokKey();
+    const shouldTryByok = isAiSkill && !forceUseCredits && quota.hasKey && quota.canUseFree && Boolean(byokKey);
+
+    if (isAiSkill && !shouldTryByok) {
+      if (!forceUseCredits && quota.hasKey && !quota.canUseFree) {
+        setFallbackModal({ open: true, reason: 'byok_daily_exhausted' });
+        return;
+      }
+      // Check & deduct credit (3 credits for AI exam grading)
+      const { success } = await deductCredit('mock_test');
+      if (!success) {
+        setFallbackModal({ open: true, reason: 'insufficient_credits' });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -140,17 +187,27 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
       if (activeSkill === 'listening' || activeSkill === 'reading') {
         finalResult = await gradeIeltsExam(normalizedExamId, activeSkill, answersRef.current);
       } else if (activeSkill === 'writing') {
-        finalResult = await gradeWritingTask(answersRef.current['task1'] || '', answersRef.current['task2'] || '', normalizedExamId);
+        finalResult = await gradeWritingTask(
+          answersRef.current['task1'] || '',
+          answersRef.current['task2'] || '',
+          normalizedExamId,
+          shouldTryByok ? { useByokQuota: true, byokKey } : undefined
+        );
       } else if (activeSkill === 'speaking') {
         const speakingKeys = Object.keys(answersRef.current).filter(k => k.startsWith('speakingAudio_'));
-        if (speakingKeys.length === 0) {
-          alert('กรุณากดปุ่มไมโครโฟนเพื่อบันทึกเสียงตอบคำถามอย่างน้อย 1 ข้อก่อนกดส่งข้อสอบครับ');
-          setIsSubmitting(false);
-          return;
-        }
         const audioBlobs = speakingKeys.map(k => answersRef.current[k] as Blob);
-        finalResult = await gradeSpeaking(audioBlobs, normalizedExamId);
+        finalResult = await gradeSpeaking(
+          audioBlobs,
+          normalizedExamId,
+          shouldTryByok ? { useByokQuota: true, byokKey } : undefined
+        );
       }
+
+      if (shouldTryByok) {
+        await consumeByokFreeQuota('mock_test');
+        setByokQuota(getByokQuotaStatus('mock_test'));
+      }
+
       setResult(finalResult as any);
 
       await saveMockTestResult({
@@ -168,18 +225,20 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
         resultsBreakdown: finalResult.answers,
         createdAt: Date.now()
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('เกิดข้อผิดพลาดในการตรวจข้อสอบ (อาจยังไม่มีเฉลยชุดนี้) กรุณาลองใหม่อีกครั้ง');
+      if (shouldTryByok && (err?.byokQuotaExhausted || err?.status === 429)) {
+        setFallbackModal({ open: true, reason: 'byok_google_429' });
+        return;
+      }
+      setErrorMessage(err?.message || 'เกิดข้อผิดพลาดในการตรวจข้อสอบ กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const confirmSubmit = () => {
-    if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการส่งข้อสอบ?')) {
-      handleSubmit();
-    }
+    setShowConfirmModal(true);
   };
 
   if (!activeSkill) {
@@ -496,13 +555,82 @@ const WRITING_SPECIFIC_PAGES: number[] = [1, 3];
 
           {/* Right Side: Answer Sheet */}
           <div className="w-full md:w-1/2 flex-1 md:flex-none md:h-full p-6 overflow-y-auto custom-scrollbar bg-white shadow-inner">
-            <h3 className="text-lg font-bold text-indigo-900 border-b pb-2 mb-6 sticky top-0 bg-white/90 backdrop-blur-sm z-10 flex items-center gap-2">
-              <Edit3 size={20} /> กระดาษคำตอบ
+            <h3 className="text-lg font-bold text-indigo-900 border-b pb-2 mb-6 sticky top-0 bg-white/90 backdrop-blur-sm z-10 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2"><Edit3 size={20} /> กระดาษคำตอบ</span>
+              {activeSkill === 'writing' && byokQuota.hasKey && (
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${
+                  byokQuota.canUseFree
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}>
+                  <Key size={12} />
+                  {byokQuota.canUseFree ? `BYOK ฟรี ${byokQuota.remaining}/${byokQuota.limit}` : 'BYOK ครบโควตาวันนี้'}
+                </span>
+              )}
             </h3>
+            {errorMessage && (
+              <div className="mb-4 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5">
+                {errorMessage}
+              </div>
+            )}
             <IeltsAnswerSheet skill={activeSkill} answers={answers} onAnswerChange={handleAnswerChange} />
           </div>
         </div>
       )}
+
+      {activeSkill === 'speaking' && errorMessage && (
+        <div className="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-center">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Confirm Submit Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">ยืนยันการส่งข้อสอบ IELTS?</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              {activeSkill === 'writing' || activeSkill === 'speaking'
+                ? byokQuota.canUseFree
+                  ? `ระบบจะใช้สิทธิ์ฟรี BYOK (เหลือ ${byokQuota.remaining}/${byokQuota.limit} ครั้งวันนี้ • 0 เครดิต) ในการตรวจข้อสอบ`
+                  : 'ระบบจะใช้ 3 เครดิตในการตรวจข้อสอบด้วย AI'
+                : 'พาร์ท Listening / Reading ตรวจเฉลยอัตโนมัติฟรี 0 เครดิต'}
+            </p>
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm"
+              >
+                ทำต่อ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  handleSubmit(false);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm"
+              >
+                ส่งข้อสอบเลย
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ByokQuotaFallbackModal
+        isOpen={fallbackModal.open}
+        onClose={() => setFallbackModal((prev) => ({ ...prev, open: false }))}
+        feature="mock_test"
+        reason={fallbackModal.reason}
+        creditCost={3}
+        isBusy={isSubmitting}
+        onUseCredits={() => {
+          setFallbackModal((prev) => ({ ...prev, open: false }));
+          handleSubmit(true);
+        }}
+      />
     </div>
   );
 }

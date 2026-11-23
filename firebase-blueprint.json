@@ -64,6 +64,131 @@
         "updatedAt": { "type": "number" }
       },
       "required": ["plan", "updatedAt"]
+    },
+    "RoleplayProgress": {
+      "title": "Roleplay Progress",
+      "description": "Stores per-mission completion, stars (0-3), and best scores for Real-Life Roleplay Missions separated by language.",
+      "type": "object",
+      "properties": {
+        "missionId": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "completed": { "type": "boolean" },
+        "stars": { "type": "number" },
+        "bestScore": { "type": "number" },
+        "objectivesCompletedCount": { "type": "number" },
+        "playCount": { "type": "number" },
+        "lastPlayedAt": { "type": "number" }
+      },
+      "required": ["missionId", "lang", "completed", "stars", "bestScore", "lastPlayedAt"]
+    },
+    "KaraokeSongCache": {
+      "title": "Karaoke Song Cache",
+      "description": "Global shared cache of resolved YouTube videos, synced LRC lines, Thai translations, Pinyin, and extracted vocabulary decks.",
+      "type": "object",
+      "properties": {
+        "songKey": { "type": "string", "maxLength": 128 },
+        "curatedId": { "type": "string", "maxLength": 64 },
+        "videoId": { "type": "string", "maxLength": 32 },
+        "alternativeVideoIds": { "type": "array" },
+        "title": { "type": "string", "maxLength": 200 },
+        "artist": { "type": "string", "maxLength": 200 },
+        "language": { "type": "string", "enum": ["en", "zh"] },
+        "difficulty": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+        "thumbnailUrl": { "type": "string", "maxLength": 400 },
+        "durationSec": { "type": "number" },
+        "isSynced": { "type": "boolean" },
+        "lrcSource": { "type": "string", "enum": ["lrclib", "manual", "plain"] },
+        "lines": { "type": "array" },
+        "vocabDeck": { "type": "array" },
+        "playCount": { "type": "number" },
+        "cachedAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "createdByUid": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["songKey", "videoId", "title", "artist", "language", "lines", "vocabDeck", "cachedAt", "updatedAt"]
+    },
+    "KaraokeFavorite": {
+      "title": "Karaoke Favorite",
+      "description": "User bookmarked favorite karaoke song.",
+      "type": "object",
+      "properties": {
+        "songKey": { "type": "string" },
+        "curatedId": { "type": "string" },
+        "videoId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "language": { "type": "string", "enum": ["en", "zh"] },
+        "thumbnailUrl": { "type": "string" },
+        "addedAt": { "type": "number" }
+      },
+      "required": ["songKey", "title", "artist", "language", "addedAt"]
+    },
+    "KaraokeHistory": {
+      "title": "Karaoke History",
+      "description": "User recently sung karaoke songs and best gap-fill quiz scores.",
+      "type": "object",
+      "properties": {
+        "songKey": { "type": "string" },
+        "curatedId": { "type": "string" },
+        "videoId": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "language": { "type": "string", "enum": ["en", "zh"] },
+        "thumbnailUrl": { "type": "string" },
+        "lastPlayedAt": { "type": "number" },
+        "playCount": { "type": "number" },
+        "bestQuizScore": { "type": "number" },
+        "bestQuizTotal": { "type": "number" }
+      },
+      "required": ["songKey", "videoId", "title", "artist", "language", "lastPlayedAt", "playCount"]
+    },
+    "KaraokeSyncOffset": {
+      "title": "Karaoke Sync Offset",
+      "description": "Per-video user lyrics timing offset in seconds.",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string" },
+        "offsetSec": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["videoId", "offsetSec", "updatedAt"]
+    },
+    "KaraokeCommunityIndex": {
+      "title": "Karaoke Community Song Index",
+      "description": "Lightweight public listing of quality-checked YouTube karaoke songs translated by users so everyone can sing them for free.",
+      "type": "object",
+      "properties": {
+        "songKey": { "type": "string", "maxLength": 128 },
+        "videoId": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 200 },
+        "artist": { "type": "string", "maxLength": 200 },
+        "language": { "type": "string", "enum": ["en", "zh"] },
+        "thumbnailUrl": { "type": "string", "maxLength": 400 },
+        "durationSec": { "type": "number" },
+        "lineCount": { "type": "number" },
+        "vocabCount": { "type": "number" },
+        "isSynced": { "type": "boolean" },
+        "isPublic": { "type": "boolean" },
+        "playCount": { "type": "number" },
+        "addedAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "createdByUid": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["songKey", "videoId", "title", "artist", "language", "lineCount", "isSynced", "isPublic", "playCount", "addedAt", "updatedAt"]
+    },
+    "ByokDailyUsage": {
+      "title": "BYOK Daily Usage",
+      "description": "Tracks daily free BYOK quota usage aligned with Google Pacific midnight reset (7 vocab / 3 mock tests / 3 karaoke translations / 1 AI subtitle clip <= 5 min).",
+      "type": "object",
+      "properties": {
+        "periodKey": { "type": "string" },
+        "vocab_exam": { "type": "number" },
+        "mock_test": { "type": "number" },
+        "karaoke_translate": { "type": "number" },
+        "video_subtitle": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["periodKey", "vocab_exam", "mock_test", "karaoke_translate", "video_subtitle", "updatedAt"]
     }
   },
   "firestore": {
@@ -90,6 +215,48 @@
         "$ref": "#/entities/LearningPlan"
       },
       "description": "User learning plan."
+    },
+    "/users/{userId}/roleplay_progress/{progressId}": {
+      "schema": {
+        "$ref": "#/entities/RoleplayProgress"
+      },
+      "description": "User completion, stars, and best scores for Real-Life Roleplay Missions."
+    },
+    "/karaoke_songs/{songKey}": {
+      "schema": {
+        "$ref": "#/entities/KaraokeSongCache"
+      },
+      "description": "Global shared cache of translated karaoke songs so repeat plays are instant and free for everyone."
+    },
+    "/karaoke_community_index/{songKey}": {
+      "schema": {
+        "$ref": "#/entities/KaraokeCommunityIndex"
+      },
+      "description": "Public quality-filtered index of user-added YouTube karaoke songs (synced lyrics, >= 8 lines) listed in the Community Library tab."
+    },
+    "/users/{userId}/karaoke_favorites/{songKey}": {
+      "schema": {
+        "$ref": "#/entities/KaraokeFavorite"
+      },
+      "description": "User favorite karaoke songs."
+    },
+    "/users/{userId}/karaoke_history/{songKey}": {
+      "schema": {
+        "$ref": "#/entities/KaraokeHistory"
+      },
+      "description": "User karaoke listening history and quiz high scores."
+    },
+    "/users/{userId}/karaoke_offsets/{videoId}": {
+      "schema": {
+        "$ref": "#/entities/KaraokeSyncOffset"
+      },
+      "description": "User saved per-video sync offset adjustments."
+    },
+    "/users/{userId}/settings/byok_daily_usage": {
+      "schema": {
+        "$ref": "#/entities/ByokDailyUsage"
+      },
+      "description": "Daily free BYOK quota usage counters synced across user devices."
     }
   }
 }

@@ -33,6 +33,109 @@ service cloud.firestore {
         && data.memories is list && data.memories.size() <= 50
         && (!('updatedAt' in data) || data.updatedAt is number);
     }
+    function isValidKaraokeSong(data) {
+      return data.keys().hasAll(['songKey', 'videoId', 'title', 'artist', 'language', 'lines', 'vocabDeck', 'cachedAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'songKey', 'curatedId', 'videoId', 'alternativeVideoIds', 'title', 'artist',
+          'language', 'difficulty', 'thumbnailUrl', 'durationSec', 'isSynced', 'lrcSource',
+          'lines', 'vocabDeck', 'playCount', 'cachedAt', 'updatedAt', 'createdByUid'
+        ])
+        && data.songKey is string && data.songKey.size() > 0 && data.songKey.size() <= 128
+        && data.videoId is string && data.videoId.size() >= 6 && data.videoId.size() <= 32
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.artist is string && data.artist.size() <= 200
+        && data.language is string && (data.language == 'en' || data.language == 'zh')
+        && (!('curatedId' in data) || (data.curatedId is string && data.curatedId.size() <= 64))
+        && (!('difficulty' in data) || (data.difficulty is string && (data.difficulty == 'beginner' || data.difficulty == 'intermediate' || data.difficulty == 'advanced')))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 400))
+        && (!('durationSec' in data) || data.durationSec is number)
+        && (!('isSynced' in data) || data.isSynced is bool)
+        && (!('lrcSource' in data) || (data.lrcSource is string && (data.lrcSource == 'lrclib' || data.lrcSource == 'manual' || data.lrcSource == 'plain')))
+        && (!('alternativeVideoIds' in data) || (data.alternativeVideoIds is list && data.alternativeVideoIds.size() <= 6))
+        && data.lines is list && data.lines.size() > 0 && data.lines.size() <= 200
+        && data.vocabDeck is list && data.vocabDeck.size() <= 15
+        && (!('playCount' in data) || data.playCount is number)
+        && data.cachedAt is number
+        && data.updatedAt is number
+        && (!('createdByUid' in data) || (data.createdByUid is string && data.createdByUid.size() <= 128));
+    }
+
+    // Global Karaoke Song Cache (get by exact songKey for instant free playback; validated signed-in cache writes)
+    match /karaoke_songs/{songKey} {
+      allow get: if isValidId(songKey);
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(songKey)
+        && isValidKaraokeSong(incoming())
+        && incoming().songKey == songKey
+        && incoming().createdByUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && isValidId(songKey)
+        && isValidKaraokeSong(incoming())
+        && (
+          isAdmin()
+          || (
+            incoming().songKey == existing().songKey
+            && incoming().videoId == existing().videoId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['lines', 'vocabDeck', 'alternativeVideoIds', 'isSynced', 'lrcSource', 'updatedAt', 'playCount', 'createdByUid'])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
+    function isValidCommunityKaraokeSong(data) {
+      return data.keys().hasAll(['songKey', 'videoId', 'title', 'artist', 'language', 'lineCount', 'isSynced', 'isPublic', 'playCount', 'addedAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'songKey', 'videoId', 'title', 'artist', 'language', 'thumbnailUrl',
+          'durationSec', 'lineCount', 'vocabCount', 'isSynced', 'isPublic',
+          'playCount', 'addedAt', 'updatedAt', 'createdByUid'
+        ])
+        && data.songKey is string && data.songKey.size() > 0 && data.songKey.size() <= 128
+        && data.videoId is string && data.videoId.size() >= 6 && data.videoId.size() <= 32
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.artist is string && data.artist.size() <= 200
+        && data.language is string && (data.language == 'en' || data.language == 'zh')
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 400))
+        && (!('durationSec' in data) || (data.durationSec is number && data.durationSec >= 0 && data.durationSec <= 1800))
+        && data.lineCount is number && data.lineCount >= 8 && data.lineCount <= 200
+        && (!('vocabCount' in data) || (data.vocabCount is number && data.vocabCount >= 0 && data.vocabCount <= 20))
+        && data.isSynced is bool && data.isSynced == true
+        && data.isPublic is bool
+        && data.playCount is number && data.playCount >= 1 && data.playCount <= 10000000
+        && data.addedAt is number
+        && data.updatedAt is number
+        && (!('createdByUid' in data) || (data.createdByUid is string && data.createdByUid.size() <= 128));
+    }
+
+    // Public Community Karaoke Song Index (lightweight metadata only; quality-checked synced songs >= 8 lines)
+    match /karaoke_community_index/{songKey} {
+      allow get: if isValidId(songKey) && (existing().isPublic == true || isAdmin());
+      allow list: if existing().isPublic == true || isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(songKey)
+        && isValidCommunityKaraokeSong(incoming())
+        && incoming().songKey == songKey
+        && incoming().isPublic == true
+        && incoming().createdByUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && isValidId(songKey)
+        && isValidCommunityKaraokeSong(incoming())
+        && (
+          isAdmin()
+          || (
+            incoming().songKey == existing().songKey
+            && incoming().videoId == existing().videoId
+            && incoming().isPublic == existing().isPublic
+            && incoming().addedAt == existing().addedAt
+            && (!('createdByUid' in existing()) || incoming().createdByUid == existing().createdByUid)
+            && incoming().playCount >= existing().playCount
+            && incoming().playCount <= existing().playCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['playCount', 'updatedAt', 'lineCount', 'vocabCount', 'title', 'artist', 'thumbnailUrl'])
+          )
+        );
+      allow delete: if isAdmin();
+    }
+
     match /user_progress/{userId} {
       allow read: if isSignedIn() && isOwner(userId) && isValidId(userId);
       allow create: if isSignedIn() 

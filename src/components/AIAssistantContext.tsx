@@ -15,19 +15,20 @@ export default function AIAssistantContext() {
         <li><strong>Lessons / Vocabulary (คลังคำศัพท์):</strong> Categorized vocabulary lists ranging from HSK1-6 for Chinese, CEFR A1-C2 for English, and Thai proficiency levels. Users can listen to pronunciation, see translations, and add words to favorites.</li>
         <li><strong>Flashcards (แฟลชการ์ด):</strong> An interactive flashcard system with spaced repetition to memorize vocabulary.</li>
         <li><strong>Vocab Exam (ทดสอบคำศัพท์):</strong> Quizzes to test vocabulary retention.</li>
-        <li><strong>Vocab Games (มินิเกมคำศัพท์):</strong> Gamified learning experiences including "Match Master", "Word Scramble", "Word Rain", "Audio Bomb", and "Laser Cannon".</li>
+        <li><strong>Vocab Games (มินิเกมคำศัพท์ — Free):</strong> Gamified learning experiences including "Match Master", "Wall Smasher" (brick-tapping spelling challenge), "Word Rain", "Word Scramble", "Audio Bomb", and "Laser Cannon".</li>
         <li><strong>Exercises (แบบฝึกหัด):</strong> Grammar and reading comprehension exercises.</li>
         <li><strong>Exams (ข้อสอบ):</strong> Comprehensive exams simulating real test environments.</li>
         <li><strong>Mock Tests (Mock Tests):</strong> Full-scale simulated exams for IELTS, TOEIC, HSK, and TGAT. Features multiple parts including Listening, Reading, and Writing, complete with timers and scoring algorithms.</li>
       </ul>
-      <h2>Subscription & Premium Features</h2>
+      <h2>Subscription & BYOK Features</h2>
       <p>
-        The platform operates on a freemium model with 3 tiers: Basic (Free), Pro (฿199/month), and Premium (฿399/month).
+        The platform offers a generous Free Plan (including free Vocabulary, Flashcards, Writing Practice, Vocab Exams, and all Vocab Games in both CN and EN), a 14-day Testing trial for new accounts, and 3 simple paid 30-day monthly plans whose plan credits expire with the plan: Starter (฿69 / 50 credits per month), Basic (฿129 / 120 credits per month), and Plus (฿199 / 200 credits per month). It also includes a Gemini AI Video Subtitle generator (5 credits per video) and dedicated Desktop + iPad/Mobile floating facecam modes.
       </p>
       <ul>
-        <li><strong>Basic:</strong> Limited AI video call credits (30 credits), basic vocabulary, limited mock tests.</li>
-        <li><strong>Pro:</strong> 500 AI video call credits, access to all mini-games, unlocked exercises, and premium mock tests.</li>
-        <li><strong>Premium:</strong> Unlimited AI video call credits, advanced AI feedback on speaking and writing, all mini-games, and unlimited mock tests.</li>
+        <li><strong>Free Plan (฿0):</strong> Free access to Vocabulary, Flashcards, Writing Practice, Vocab Exams, Vocab Games (CN & EN), Chinese lessons/exams, plus unlimited AI voice and video calls (0 credits) with Bring Your Own Key (BYOK — calls only).</li>
+        <li><strong>Starter Plan (฿69 / 30 days):</strong> Unlocks 100% of features including Mock Tests and English lessons/exams, plus 50 AI credits for 30 days and unlimited BYOK calls.</li>
+        <li><strong>Basic Plan (฿129 / 30 days):</strong> Unlocks 100% of features, plus 120 AI credits for 30 days and unlimited BYOK calls.</li>
+        <li><strong>Plus Plan (฿199 / 30 days):</strong> Unlocks 100% of features, plus 200 AI credits for 30 days and unlimited BYOK calls.</li>
       </ul>
       <p>
         AI agents are welcome to analyze this structure and provide recommendations for UI/UX improvements, gamification enhancements, or new AI features. Note that sensitive backend keys (Firebase, API Keys) are securely handled server-side.

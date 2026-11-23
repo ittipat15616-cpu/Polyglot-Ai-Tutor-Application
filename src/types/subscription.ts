@@ -24,12 +24,15 @@ export interface TierConfig {
   id: SubscriptionTier;
   name: string;
   price: number; // THB / 30 Days
-  dailyCredits: number; // Credits allocated every 10-day cycle
+  dailyCredits: number; // Monthly credits allocated for the 30-day plan (expires with plan)
   description: string;
   badgeColor: string;
   allowedTabs: string[]; // Allowed tab IDs ('lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact')
   features: string[];
+  isLegacy?: boolean; // Hidden from customer purchase options; kept for backward compatibility
 }
+
+export const PAID_TIER_IDS: SubscriptionTier[] = ['STARTER', 'BASIC', 'PLUS'];
 
 export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
   TESTING: {
@@ -37,14 +40,14 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     name: 'Testing Plan',
     price: 0,
     dailyCredits: 0,
-    description: 'แพ็กเกจทดลองสำหรับบัญชีใหม่ (14 วัน)',
+    description: 'แพ็กเกจทดลองสำหรับบัญชีใหม่ ปลดล็อคทุกหน้า 14 วัน + BYOK คอล AI ฟรีไม่อั้น',
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคเข้าใช้งานได้ทุกหน้าเป็นเวลา 14 วัน (รวมเกมคำศัพท์)',
-      'ไม่มีเครดิต AI ให้ฟรี (หากต้องการใช้งาน AI สามารถซื้อแพ็กเกจหรือเติมเครดิตเพิ่มได้)',
-      'เมื่อครบ 14 วัน จะกลับไปใช้ Free Plan',
-      'หากมีเครดิตที่เติมไว้ สามารถใช้งานต่อได้'
+      'ปลดล็อคเข้าใช้งานได้ทุกหน้าเป็นเวลา 14 วัน (รวม Mock Tests, คาราโอเกะ & เนื้อหา EN)',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 ครั้ง/วัน • ตรวจข้อสอบ 3 ครั้ง/วัน • แปลเพลงใหม่ 3 เพลง/วัน',
+      'ไม่มีเครดิต AI แถมฟรี (สามารถใช้ BYOK หรือซื้อแพ็กเกจ/เติมเครดิตเพิ่มได้)',
+      'เมื่อครบ 14 วัน จะสลับเป็น Free Plan โดยเครดิตที่เติมไว้ยังอยู่ครบ'
     ]
   },
   FREE: {
@@ -52,44 +55,44 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     name: 'Free Plan',
     price: 0,
     dailyCredits: 0,
-    description: 'เข้าถึงคลังคำศัพท์ แฟลชการ์ด คัดศัพท์ และสอบศัพท์ฟรีทั้งภาษาจีนและอังกฤษ',
+    description: 'ใช้งานคลังคำศัพท์ แฟลชการ์ด คัดศัพท์ สอบศัพท์ เกมคำศัพท์ และคลังเพลงคาราโอเกะฟรี ทั้งจีนและอังกฤษ',
     badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'exercises', 'exams', 'contact', 'call'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'karaoke', 'contact', 'call'],
     features: [
-      'เข้าถึงคลังคำศัพท์ แฟลชการ์ด คัดศัพท์ และสอบศัพท์ฟรี (ทั้งภาษาจีนและอังกฤษ)',
-      'ทำบทเรียนและข้อสอบภาษาจีนฟรี (CN)',
-      'สอบศัพท์ใช้ 1 เครดิตในการส่งตรวจคำตอบ',
-      'เข้าถึงหน้าคอลได้ (ใช้งาน AI เมื่อมีเครดิต)',
-      'ล็อคเกมคำศัพท์ ระบบจำลองสอบ และบทเรียน/ข้อสอบภาษาอังกฤษ'
+      'ใช้งานฟรี 100%: คลังคำศัพท์ แฟลชการ์ด คัดศัพท์ สอบศัพท์ เกมคำศัพท์ และคลังเพลงคาราโอเกะ (EN & CN)',
+      'เข้าเรียนบทเรียนและทำข้อสอบภาษาจีนได้ฟรี (CN)',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 ครั้ง/วัน • ตรวจข้อสอบ 3 ครั้ง/วัน • แปลเพลงใหม่ 3 เพลง/วัน',
+      'สอบศัพท์ใช้ 1 เครดิต / แปลเพลงใหม่ใช้ 2 เครดิต (หรือใช้ฟรีผ่าน BYOK ตามสิทธิ์รายวัน)',
+      'ล็อคเฉพาะระบบจำลองสอบ (Mock Tests) และบทเรียน/ข้อสอบภาษาอังกฤษ'
     ]
   },
   STARTER: {
     id: 'STARTER',
     name: 'Starter Plan',
     price: 69,
-    dailyCredits: 0,
-    description: 'ปลดล็อคทุกหน้ารวมเกมคำศัพท์ 100% (ไม่มีเครดิต AI ให้)',
+    dailyCredits: 50,
+    description: 'เริ่มต้นสุดคุ้ม ปลดล็อคทุกหน้า 100% พร้อม 50 เครดิต AI / เดือน (อายุ 30 วัน)',
     badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคเข้าใช้งานได้ทุกหน้า 100%',
-      'รวมหน้าเกมคำศัพท์ แฟลชการ์ด คัดศัพท์ สอบศัพท์ บทเรียน',
-      'เข้าถึงระบบจำลองสอบ HSK & IELTS',
-      'ไม่มีเครดิต AI ให้ (หากต้องการใช้ AI สามารถซื้อแพลนหรือเติมเครดิตเพิ่ม)'
+      'ปลดล็อคทุกหน้า 100% รวมระบบจำลองสอบ (Mock Tests), คาราโอเกะ และเนื้อหาภาษาอังกฤษ',
+      '⚡ รับ 50 เครดิต AI / เดือน ใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 3 ต่อวัน',
+      'อายุใช้งาน 30 วัน'
     ]
   },
   BASIC: {
     id: 'BASIC',
     name: 'Basic Plan',
     price: 129,
-    dailyCredits: 40,
-    description: 'เปิดครบทุกฟีเจอร์รวมเกมคำศัพท์ พร้อม 40 เครดิต (รีเฟรชทุก 10 วัน)',
+    dailyCredits: 120,
+    description: 'ยอดนิยมสำหรับเรียนต่อเนื่อง ปลดล็อคทุกหน้า พร้อม 120 เครดิต AI / เดือน (อายุ 30 วัน)',
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคทุกฟีเจอร์รวมเกมคำศัพท์ 100%',
-      '⚡ รับ 40 เครดิต AI รีเฟรชทุกๆ 10 วัน',
-      'คอลเสียงกับ AI หรือวิดีโอคอล/ตรวจข้อสอบ',
+      'ปลดล็อคทุกหน้า 100% รวมระบบจำลองสอบ (Mock Tests), คาราโอเกะ และเนื้อหาภาษาอังกฤษ',
+      '⚡ รับ 120 เครดิต AI / เดือน ใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 3 ต่อวัน',
       'อายุใช้งาน 30 วัน'
     ]
   },
@@ -97,72 +100,70 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     id: 'PLUS',
     name: 'Plus Plan',
     price: 199,
-    dailyCredits: 65,
-    description: 'คุ้มค่าสำหรับเรียนต่อเนื่อง พร้อม 65 เครดิต (รีเฟรชทุก 10 วัน)',
+    dailyCredits: 200,
+    description: 'คุ้มค่าที่สุดสำหรับฝึกฝนเต็มที่ ปลดล็อคทุกหน้า พร้อม 200 เครดิต AI / เดือน (อายุ 30 วัน)',
     badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคทุกฟีเจอร์ในแอป 100%',
-      '⚡ รับ 65 เครดิต AI รีเฟรชทุกๆ 10 วัน',
-      'คอลเสียงกับ AI หรือวิดีโอคอล/ตรวจข้อสอบ',
+      'ปลดล็อคทุกหน้า 100% รวมระบบจำลองสอบ (Mock Tests), คาราโอเกะ และเนื้อหาภาษาอังกฤษ',
+      '⚡ รับ 200 เครดิต AI / เดือน ใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 3 ต่อวัน',
       'อายุใช้งาน 30 วัน'
     ]
   },
+  // Legacy & Owner VIP tiers (hidden from customer purchase options; retained for Firestore backward compatibility)
   PREMIUM: {
     id: 'PREMIUM',
-    name: 'Premium Plan',
-    price: 269,
+    name: 'Premium Plan (Legacy)',
+    price: 199,
     dailyCredits: 90,
-    description: 'สำหรับผู้เรียนจริงจัง พร้อม 90 เครดิต (รีเฟรชทุก 10 วัน)',
+    description: 'แพ็กเกจเดิมในระบบ (เปิดครบทุกฟีเจอร์)',
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคทุกฟีเจอร์ในแอป 100%',
-      '⚡ รับ 90 เครดิต AI รีเฟรชทุกๆ 10 วัน',
-      'คอลเสียงกับ AI หรือวิดีโอคอล/ตรวจข้อสอบ',
-      'อายุใช้งาน 30 วัน'
-    ]
+      'ปลดล็อคทุกหน้า 100%',
+      'รองรับ BYOK คอล AI ฟรีไม่อั้น + โควตาฟรีรายวัน (7/3/3)'
+    ],
+    isLegacy: true
   },
   PRO: {
     id: 'PRO',
-    name: 'Pro Plan',
-    price: 339,
+    name: 'Pro Plan (Legacy)',
+    price: 199,
     dailyCredits: 120,
-    description: 'สำหรับฝึกฝนเข้มข้น พร้อม 120 เครดิต (รีเฟรชทุก 10 วัน)',
+    description: 'แพ็กเกจเดิมในระบบ (เปิดครบทุกฟีเจอร์)',
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคทุกฟีเจอร์ในแอป 100%',
-      '⚡ รับ 120 เครดิต AI รีเฟรชทุกๆ 10 วัน',
-      'คอลเสียงกับ AI หรือวิดีโอคอล/ตรวจข้อสอบ',
-      'อายุใช้งาน 30 วัน'
-    ]
+      'ปลดล็อคทุกหน้า 100%',
+      'รองรับ BYOK คอล AI ฟรีไม่อั้น + โควตาฟรีรายวัน (7/3/3)'
+    ],
+    isLegacy: true
   },
   ULTRA: {
     id: 'ULTRA',
-    name: 'Ultra Plan',
-    price: 399,
-    dailyCredits: 150,
-    description: 'แพ็กเกจสูงสุด ใช้งาน AI เต็มที่ พร้อม 150 เครดิต (รีเฟรชทุก 10 วัน)',
-    badgeColor: 'bg-rose-100 text-rose-800 border-rose-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'call', 'contact'],
+    name: 'Owner VIP',
+    price: 0,
+    dailyCredits: 200,
+    description: 'สิทธิ์เจ้าของระบบ (ตลอดชีพ)',
+    badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
     features: [
-      'ปลดล็อคทุกฟีเจอร์ในแอป 100%',
-      '⚡ รับ 150 เครดิต AI รีเฟรชทุกๆ 10 วัน',
-      'คอลเสียงกับ AI หรือวิดีโอคอล/ตรวจข้อสอบ',
-      'สิทธิ์การใช้งานระดับสูงสุด Ultra VIP 30 วัน'
-    ]
+      'ปลดล็อคทุกหน้า 100% ตลอดชีพ',
+      'รองรับ BYOK คอล AI ฟรีไม่อั้น + โควตาฟรีรายวัน (7/3/3)'
+    ],
+    isLegacy: true
   }
 };
 
 export interface UserSubscriptionState {
   tier: SubscriptionTier;
-  dailyCredits: number; // Credits from tier allocation (refreshed every 10 days)
-  maxDailyCredits: number; // Max credits allocated per 10-day cycle
+  dailyCredits: number; // Monthly credits from tier allocation (valid for 30 days, expires with plan)
+  maxDailyCredits: number; // Max monthly credits allocated for the 30-day plan
   purchasedCredits: number;
   lastDailyResetDate?: string; // Legacy YYYY-MM-DD
-  nextCreditResetAt?: number | null; // Timestamp (ms) for next 10-day cycle refresh
-  lastCreditResetAt?: number | null; // Timestamp (ms) of the last credit refresh
+  nextCreditResetAt?: number | null; // Legacy unused field (no 10-day refresh; credits expire with plan)
+  lastCreditResetAt?: number | null; // Timestamp (ms) of the last credit grant/upgrade
   expiresAt: number | null; // Timestamp (ms) for 30-day expiration, null for FREE
   isTrial?: boolean; // True if this is a trial
   hasReceivedTestingTrial?: boolean; // True if they have already claimed the 14-day TESTING plan

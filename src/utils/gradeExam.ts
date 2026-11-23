@@ -7,7 +7,6 @@ import hsk6AnswerKey from '../data/hsk6_answer_key.json';
 import { hsk4Keywords } from './hsk4Keywords';
 import { hsk5WritingPrompts } from './hsk5Keywords';
 import { hsk6Articles } from './hsk6Articles';
-import { getStoredByokKey } from '../services/byokService';
 
 export interface ExamResult {
   totalScore: number;
@@ -27,7 +26,37 @@ export interface ExamResult {
   }[];
 }
 
-export async function gradeExam(level: string, examId: string, userAnswers: Record<string, string>): Promise<ExamResult> {
+export interface HskGradingByokOptions {
+  useByokQuota?: boolean;
+  byokKey?: string | null;
+}
+
+/**
+ * Returns true if this HSK level + answers requires an AI grading call (HSK4 Q96-100, HSK5 Q99-100, HSK6 Q101).
+ * HSK1, HSK2, HSK3 are 100% locally graded without any AI call.
+ */
+export function doesHskExamNeedAi(level: string, userAnswers: Record<string, string>): boolean {
+  if (level === 'HSK4') {
+    for (let i = 96; i <= 100; i++) {
+      if ((userAnswers[String(i)] || '').trim() !== '') return true;
+    }
+    return false;
+  }
+  if (level === 'HSK5') {
+    return (userAnswers['99'] || '').trim() !== '' || (userAnswers['100'] || '').trim() !== '';
+  }
+  if (level === 'HSK6') {
+    return (userAnswers['101'] || '').trim() !== '';
+  }
+  return false;
+}
+
+export async function gradeExam(
+  level: string,
+  examId: string,
+  userAnswers: Record<string, string>,
+  byokOpts?: HskGradingByokOptions
+): Promise<ExamResult> {
   if (level === 'HSK1' && (hsk1AnswerKey as any)[examId]) {
     const answers = (hsk1AnswerKey as any)[examId];
     let listeningCorrect = 0;
@@ -201,56 +230,9 @@ export async function gradeExam(level: string, examId: string, userAnswers: Reco
           writingScore += 6; // Q86-95 (10 items * 6 pts = 60 pts)
         }
       } else {
-        // Q96-100: AI Grading (8 pts max each)
-        if (userAns !== "") {
-          try {
-            
-            const keyword = hsk4Keywords[examId]?.[qNum] || "";
-            const prompt = `คุณคือผู้ตรวจข้อสอบ HSK4 พาร์ทการเขียน (แต่งประโยคจากคำศัพท์ที่กำหนด)
-คำศัพท์ที่กำหนดให้คือ: "${keyword}"
-ประโยคที่นักเรียนแต่งคือ: "${userAns}"
-
-เกณฑ์การให้คะแนน (เต็ม 8 คะแนน):
-- ใช้คำศัพท์ที่กำหนดให้ได้ถูกต้อง
-- ไวยากรณ์ถูกต้องตามระดับ HSK4
-- ความหมายสมเหตุสมผล
-
-หน้าที่ของคุณ:
-1. ให้คะแนนประโยคนี้ (0-8)
-2. ถ้าได้ 8 คะแนนเต็ม ให้คืนค่าเป็น JSON แบบนี้: {"score": 8, "feedback": "ได้คะแนนเต็ม"} (ห้ามอธิบายเพิ่ม)
-3. ถ้าถูกหักคะแนน ให้อธิบายข้อผิดพลาดและเหตุผลที่หักคะแนนสั้นๆ เป็นภาษาไทย คืนค่า JSON แบบนี้: {"score": <คะแนน>, "feedback": "<คำอธิบาย>"}
-
-กรุณาตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown block`;
-            
-            const byokKey = getStoredByokKey();
-            const response = await fetch('/api/grade-writing', { 
-              method: 'POST', 
-              headers: { 
-                'Content-Type': 'application/json',
-                ...(byokKey ? { 'x-byok-key': byokKey } : {})
-              }, 
-              body: JSON.stringify({ prompt, byokKey: byokKey || undefined }) 
-            });
-            if (!response.ok) {
-              const errText = await response.text();
-              let feedbackMsg = "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI";
-              if (response.status === 429 || errText.includes("RESOURCE_EXHAUSTED") || errText.includes("429")) {
-                  feedbackMsg = "โควต้า AI เต็ม (RESOURCE_EXHAUSTED)";
-              }
-              throw new Error(feedbackMsg);
-            }
-            const parsed = await response.json();
-            writingScore += parsed.score;
-            isCorrect = parsed.score === 8; // Full mark means fully correct
-            explanationThai = parsed.feedback;
-          } catch (e) {
-            console.error("AI Grading error:", e);
-            explanationThai = e.message || "เกิดข้อผิดพลาดในการเรียกใช้ AI ตรวจคำตอบ";
-          }
-        } else {
-          isCorrect = false;
-          explanationThai = "ไม่ได้ตอบคำถามข้อนี้";
-        }
+        // Placeholder for Q96-100 — batch-graded below in 1 single AI request
+        isCorrect = false;
+        explanationThai = userAns === "" ? "ไม่ได้ตอบคำถามข้อนี้" : "";
       }
       
       results.push({
@@ -260,6 +242,59 @@ export async function gradeExam(level: string, examId: string, userAnswers: Reco
         isCorrect,
         explanationThai
       });
+    }
+
+    // Batch-grade HSK4 Q96-100 in 1 single API call
+    const hsk4BatchItems = [];
+    for (let i = 96; i <= 100; i++) {
+      const qNum = i.toString();
+      const userAns = (userAnswers[qNum] || "").trim();
+      if (userAns !== "") {
+        const keyword = hsk4Keywords[examId]?.[qNum] || "";
+        hsk4BatchItems.push({
+          questionNumber: qNum,
+          maxScore: 8,
+          instruction: `แต่งประโยคระดับ HSK4 จากคำศัพท์ "${keyword}" ให้ถูกต้องตามไวยากรณ์และความหมายสมเหตุสมผล`,
+          studentAnswer: userAns,
+        });
+      }
+    }
+
+    if (hsk4BatchItems.length > 0) {
+      const response = await fetch('/api/grade-writing-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          level: 'HSK4',
+          items: hsk4BatchItems,
+          useByokQuota: Boolean(byokOpts?.useByokQuota),
+          byokKey: byokOpts?.byokKey || null,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const err: any = new Error(data.error || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI");
+        err.status = response.status;
+        err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || response.status === 429);
+        throw err;
+      }
+      const gradedMap = new Map<string, { score: number; feedback: string }>();
+      if (Array.isArray(data.results)) {
+        for (const r of data.results) {
+          gradedMap.set(String(r.questionNumber), {
+            score: Math.max(0, Math.min(8, Number(r.score) || 0)),
+            feedback: String(r.feedback || ""),
+          });
+        }
+      }
+      for (const r of results) {
+        const g = gradedMap.get(r.questionNumber);
+        if (g) {
+          writingScore += g.score;
+          r.isCorrect = g.score === 8;
+          r.explanationThai = g.feedback;
+        }
+      }
     }
     
     const listeningScore = Math.round((listeningCorrect / 45) * 100);
@@ -309,77 +344,9 @@ export async function gradeExam(level: string, examId: string, userAnswers: Reco
           writingScore += 5;
         }
       } else {
-        // Q99-100: AI Grading (30 pts max each)
-        if (userAns !== "") {
-          try {
-            
-            
-            let prompt = "";
-            if (i === 99) {
-              const keywordList = hsk5WritingPrompts[examId]?.q99_keywords.join('、') || "";
-              prompt = `คุณคือผู้ตรวจข้อสอบ HSK5 พาร์ทการเขียน (แต่งประโยคจากคำศัพท์ที่กำหนด)
-คำศัพท์ที่กำหนดให้คือ: "${keywordList}"
-ประโยคที่นักเรียนแต่งคือ: "${userAns}"
-
-เกณฑ์การให้คะแนน (เต็ม 30 คะแนน):
-- ใช้คำศัพท์ที่กำหนดให้ได้ถูกต้องครบถ้วน
-- ไวยากรณ์ถูกต้องตามระดับ HSK5
-- ความหมายสมเหตุสมผล และมีความยาวประมาณ 80 ตัวอักษร
-
-หน้าที่ของคุณ:
-1. ให้คะแนนประโยคนี้ (0-30)
-2. ถ้าได้ 30 คะแนนเต็ม ให้คืนค่าเป็น JSON แบบนี้: {"score": 30, "feedback": "ได้คะแนนเต็ม"} (ห้ามอธิบายเพิ่ม)
-3. ถ้าถูกหักคะแนน ให้อธิบายข้อผิดพลาดและเหตุผลที่หักคะแนนสั้นๆ เป็นภาษาไทย คืนค่า JSON แบบนี้: {"score": <คะแนน>, "feedback": "<คำอธิบาย>"}
-
-กรุณาตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown block`;
-            } else {
-              const imageTopic = hsk5WritingPrompts[examId]?.q100_image_topic || "";
-              prompt = `คุณคือผู้ตรวจข้อสอบ HSK5 พาร์ทการเขียน (แต่งประโยคจากรูปภาพ)
-รูปภาพที่กำหนดให้ในข้อสอบมีเนื้อหาดังนี้: "${imageTopic}"
-ประโยคที่นักเรียนแต่งคือ: "${userAns}"
-
-เกณฑ์การให้คะแนน (เต็ม 30 คะแนน):
-- เนื้อหาที่เขียนมีความสอดคล้องกับรูปภาพที่กำหนด
-- ไวยากรณ์และคำศัพท์ถูกต้องตามระดับ HSK5
-- ความหมายสมเหตุสมผล และมีความยาวประมาณ 80 ตัวอักษร
-
-หน้าที่ของคุณ:
-1. ให้คะแนนประโยคนี้ (0-30)
-2. ถ้าได้ 30 คะแนนเต็ม ให้คืนค่าเป็น JSON แบบนี้: {"score": 30, "feedback": "ได้คะแนนเต็ม"} (ห้ามอธิบายเพิ่ม)
-3. ถ้าถูกหักคะแนน ให้อธิบายข้อผิดพลาดและเหตุผลที่หักคะแนนสั้นๆ เป็นภาษาไทย คืนค่า JSON แบบนี้: {"score": <คะแนน>, "feedback": "<คำอธิบาย>"}
-
-กรุณาตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown block`;
-            }
-            
-            const byokKey = getStoredByokKey();
-            const response = await fetch('/api/grade-writing', { 
-              method: 'POST', 
-              headers: { 
-                'Content-Type': 'application/json',
-                ...(byokKey ? { 'x-byok-key': byokKey } : {})
-              }, 
-              body: JSON.stringify({ prompt, byokKey: byokKey || undefined }) 
-            });
-            if (!response.ok) {
-              const errText = await response.text();
-              let feedbackMsg = "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI";
-              if (response.status === 429 || errText.includes("RESOURCE_EXHAUSTED") || errText.includes("429")) {
-                  feedbackMsg = "โควต้า AI เต็ม (RESOURCE_EXHAUSTED)";
-              }
-              throw new Error(feedbackMsg);
-            }
-            const parsed = await response.json();
-            writingScore += parsed.score;
-            isCorrect = parsed.score === 30; // Full mark means fully correct
-            explanationThai = parsed.feedback;
-          } catch (e) {
-            console.error("AI Grading error:", e);
-            explanationThai = e.message || "เกิดข้อผิดพลาดในการเรียกใช้ AI ตรวจคำตอบ";
-          }
-        } else {
-          isCorrect = false;
-          explanationThai = "ไม่ได้ตอบคำถามข้อนี้";
-        }
+        // Placeholder for Q99-100 — batch-graded below in 1 single AI request
+        isCorrect = false;
+        explanationThai = userAns === "" ? "ไม่ได้ตอบคำถามข้อนี้" : "";
       }
       
       results.push({
@@ -389,6 +356,66 @@ export async function gradeExam(level: string, examId: string, userAnswers: Reco
         isCorrect,
         explanationThai
       });
+    }
+
+    // Batch-grade HSK5 Q99-100 in 1 single API call
+    const hsk5BatchItems = [];
+    const ans99 = (userAnswers["99"] || "").trim();
+    if (ans99 !== "") {
+      const keywordList = hsk5WritingPrompts[examId]?.q99_keywords.join('、') || "";
+      hsk5BatchItems.push({
+        questionNumber: "99",
+        maxScore: 30,
+        instruction: `เขียนเรียงความสั้นประมาณ 80 ตัวอักษรระดับ HSK5 โดยใช้คำศัพท์ที่กำหนดครบถ้วน: "${keywordList}"`,
+        studentAnswer: ans99,
+      });
+    }
+    const ans100 = (userAnswers["100"] || "").trim();
+    if (ans100 !== "") {
+      const imageTopic = hsk5WritingPrompts[examId]?.q100_image_topic || "";
+      hsk5BatchItems.push({
+        questionNumber: "100",
+        maxScore: 30,
+        instruction: `เขียนเรียงความสั้นประมาณ 80 ตัวอักษรระดับ HSK5 ให้สอดคล้องกับรูปภาพ: "${imageTopic}"`,
+        studentAnswer: ans100,
+      });
+    }
+
+    if (hsk5BatchItems.length > 0) {
+      const response = await fetch('/api/grade-writing-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          level: 'HSK5',
+          items: hsk5BatchItems,
+          useByokQuota: Boolean(byokOpts?.useByokQuota),
+          byokKey: byokOpts?.byokKey || null,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const err: any = new Error(data.error || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI");
+        err.status = response.status;
+        err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || response.status === 429);
+        throw err;
+      }
+      const gradedMap = new Map<string, { score: number; feedback: string }>();
+      if (Array.isArray(data.results)) {
+        for (const r of data.results) {
+          gradedMap.set(String(r.questionNumber), {
+            score: Math.max(0, Math.min(30, Number(r.score) || 0)),
+            feedback: String(r.feedback || ""),
+          });
+        }
+      }
+      for (const r of results) {
+        const g = gradedMap.get(r.questionNumber);
+        if (g) {
+          writingScore += g.score;
+          r.isCorrect = g.score === 30;
+          r.explanationThai = g.feedback;
+        }
+      }
     }
     
     const listeningScore = Math.round((listeningCorrect / 45) * 100);
@@ -454,30 +481,33 @@ export async function gradeExam(level: string, examId: string, userAnswers: Reco
 
 กรุณาตอบเป็น JSON เท่านั้น ไม่ต้องมี markdown block`;
             
-            const byokKey = getStoredByokKey();
             const response = await fetch('/api/grade-writing', { 
               method: 'POST', 
               headers: { 
                 'Content-Type': 'application/json',
-                ...(byokKey ? { 'x-byok-key': byokKey } : {})
               }, 
-              body: JSON.stringify({ prompt, byokKey: byokKey || undefined }) 
+              body: JSON.stringify({
+                prompt,
+                useByokQuota: Boolean(byokOpts?.useByokQuota),
+                byokKey: byokOpts?.byokKey || null,
+              }) 
             });
+            const parsed = await response.json().catch(() => ({}));
             if (!response.ok) {
-              const errText = await response.text();
-              let feedbackMsg = "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI";
-              if (response.status === 429 || errText.includes("RESOURCE_EXHAUSTED") || errText.includes("429")) {
-                  feedbackMsg = "โควต้า AI เต็ม (RESOURCE_EXHAUSTED)";
-              }
-              throw new Error(feedbackMsg);
+              const err: any = new Error(parsed.error || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI");
+              err.status = response.status;
+              err.byokQuotaExhausted = Boolean(parsed.byokQuotaExhausted || response.status === 429);
+              throw err;
             }
-            const parsed = await response.json();
-            writingScore += parsed.score;
-            isCorrect = parsed.score === 100;
-            explanationThai = parsed.feedback;
-          } catch (e) {
+            writingScore += Number(parsed.score) || 0;
+            isCorrect = Number(parsed.score) === 100;
+            explanationThai = parsed.feedback || "";
+          } catch (e: any) {
+            if (e?.byokQuotaExhausted || e?.status === 429) {
+              throw e;
+            }
             console.error("AI Grading error:", e);
-            explanationThai = e.message || "เกิดข้อผิดพลาดในการเรียกใช้ AI ตรวจคำตอบ";
+            explanationThai = e?.message || "เกิดข้อผิดพลาดในการเรียกใช้ AI ตรวจคำตอบ";
           }
         } else {
           isCorrect = false;

@@ -1,25 +1,27 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, AlertCircle, Crown, Zap } from 'lucide-react';
+import { X, AlertCircle, Crown, Zap, Key } from 'lucide-react';
 
 interface InsufficientCreditsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgradePlan: () => void;
   onTopupCredits: () => void;
+  reasonText?: string;
 }
 
 export default function InsufficientCreditsModal({
   isOpen,
   onClose,
   onUpgradePlan,
-  onTopupCredits
+  onTopupCredits,
+  reasonText,
 }: InsufficientCreditsModalProps) {
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
         <motion.div
           initial={{ opacity: 0, scale: 0.94, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -48,7 +50,7 @@ export default function InsufficientCreditsModal({
 
           {/* User-requested exact message */}
           <p className="text-slate-600 text-sm sm:text-base font-medium mb-5 leading-relaxed">
-            เครดิตไม่พอ สามารถซื้อเพิ่มได้บริเวณนี้
+            {reasonText || 'เครดิตไม่พอ สามารถซื้อเพิ่มได้บริเวณนี้'}
           </p>
 
           {/* Rates breakdown indicator */}
@@ -64,6 +66,10 @@ export default function InsufficientCreditsModal({
             <div className="flex items-center justify-between font-medium">
               <span>🖼️ ส่งรูปภาพ / ตรวจข้อสอบ</span>
               <span className="font-bold text-emerald-600">3 เครดิต / ครั้ง</span>
+            </div>
+            <div className="flex items-center justify-between font-medium">
+              <span>🎬 ใส่ซับวิดีโอด้วย Gemini AI</span>
+              <span className="font-bold text-amber-600">5 เครดิต / ครั้ง</span>
             </div>
           </div>
 
@@ -93,6 +99,19 @@ export default function InsufficientCreditsModal({
               <span>เติมเครดิต</span>
             </button>
           </div>
+
+          {/* BYOK Unlimited Call Shortcut */}
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              window.dispatchEvent(new CustomEvent('open-byok-modal'));
+            }}
+            className="mt-3 w-full py-2.5 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Key size={14} className="text-amber-600 shrink-0" />
+            <span>หรือเชื่อมต่อ API Key ส่วนตัว (BYOK) เพื่อคอล AI ฟรีไม่อั้นทุกแพ็กเกจ</span>
+          </button>
         </motion.div>
       </div>
     </AnimatePresence>

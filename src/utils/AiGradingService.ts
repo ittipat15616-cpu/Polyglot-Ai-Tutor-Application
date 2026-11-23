@@ -1,6 +1,3 @@
-
-import { getStoredByokKey } from '../services/byokService';
-
 export interface AiGradingResult {
   transcript?: string;
   bandScore: number;
@@ -9,7 +6,17 @@ export interface AiGradingResult {
   weaknesses: string[];
 }
 
-export async function gradeWritingTask(task1: string, task2: string, examId?: string): Promise<AiGradingResult> {
+export interface GradingByokOptions {
+  useByokQuota?: boolean;
+  byokKey?: string | null;
+}
+
+export async function gradeWritingTask(
+  task1: string,
+  task2: string,
+  examId?: string,
+  byokOpts?: GradingByokOptions
+): Promise<AiGradingResult> {
   const prompt = `You are an expert IELTS examiner. Grade the following IELTS Academic Writing responses.
 Task 1 Answer:
 "${task1 || '(No answer provided)'}"
@@ -27,33 +34,41 @@ Provide the result strictly in this JSON format (no markdown tags):
   "weaknesses": ["weakness 1", "weakness 2"]
 }`;
 
-  try {
-    const byokKey = getStoredByokKey();
-    const res = await fetch('/api/grade-writing', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        ...(byokKey ? { 'x-byok-key': byokKey } : {})
-      },
-      body: JSON.stringify({ prompt, examId, byokKey: byokKey || undefined })
-    });
-    if (!res.ok) throw new Error('Grading failed');
-    return await res.json();
-  } catch (err) {
-    console.error("AI Grading failed:", err);
+  const res = await fetch('/api/grade-writing', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt,
+      examId,
+      useByokQuota: Boolean(byokOpts?.useByokQuota),
+      byokKey: byokOpts?.byokKey || null,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data.error || 'Grading failed');
+    err.status = res.status;
+    err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
     throw err;
   }
+  return data;
 }
 
-export async function gradeSpeaking(audioBlobs: Blob[], examId?: string): Promise<AiGradingResult> {
-  
-  const audioDataPromises = audioBlobs.map(blob => {
-    return new Promise<{ base64: string, mimeType: string }>((resolve, reject) => {
+export async function gradeSpeaking(
+  audioBlobs: Blob[],
+  examId?: string,
+  byokOpts?: GradingByokOptions
+): Promise<AiGradingResult> {
+  const audioDataPromises = audioBlobs.map((blob) => {
+    return new Promise<{ base64: string; mimeType: string }>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         resolve({
           base64: (reader.result as string).split(',')[1],
-          mimeType: blob.type
+          mimeType: blob.type,
         });
       };
       reader.onerror = reject;
@@ -61,22 +76,26 @@ export async function gradeSpeaking(audioBlobs: Blob[], examId?: string): Promis
     });
   });
 
-  try {
-    const audioDataArray = await Promise.all(audioDataPromises);
-    const byokKey = getStoredByokKey();
-    const res = await fetch('/api/grade-speaking', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        ...(byokKey ? { 'x-byok-key': byokKey } : {})
-      },
-      body: JSON.stringify({ audios: audioDataArray, examId, byokKey: byokKey || undefined })
-    });
-    if (!res.ok) throw new Error('Grading failed');
-    return await res.json();
-  } catch (err) {
-    console.error("AI Grading speaking failed:", err);
+  const audioDataArray = await Promise.all(audioDataPromises);
+  const res = await fetch('/api/grade-speaking', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      audios: audioDataArray,
+      examId,
+      useByokQuota: Boolean(byokOpts?.useByokQuota),
+      byokKey: byokOpts?.byokKey || null,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data.error || 'Grading failed');
+    err.status = res.status;
+    err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
     throw err;
   }
-
+  return data;
 }

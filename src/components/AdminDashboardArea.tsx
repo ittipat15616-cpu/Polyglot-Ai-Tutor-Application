@@ -62,13 +62,13 @@ export default function AdminDashboardArea() {
         const isAdmin = data.email && isAdminEmail(data.email);
 
         // Auto-enforce for other Admins (nongrily@gmail.com, weeranan172550@gmail.com):
-        // Ultra plan (Admin) lifetime, 0 free credits, must top up themselves
+        // Starter plan (Admin) lifetime, 0 free credits, must top up themselves
         if (isAdmin && !isSuperAdmin) {
           let adminNeedsSync = false;
           const lifetimeExpiry = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000;
           if (!userSubState) {
             userSubState = {
-              tier: 'ULTRA',
+              tier: 'STARTER',
               dailyCredits: 0,
               maxDailyCredits: 0,
               purchasedCredits: 0,
@@ -79,8 +79,8 @@ export default function AdminDashboardArea() {
             };
             adminNeedsSync = true;
           } else {
-            if (userSubState.tier !== 'ULTRA') {
-              userSubState.tier = 'ULTRA';
+            if (userSubState.tier !== 'STARTER') {
+              userSubState.tier = 'STARTER';
               adminNeedsSync = true;
             }
             if (!userSubState.expiresAt || (userSubState.expiresAt - Date.now() < 50 * 365 * 24 * 60 * 60 * 1000)) {
@@ -178,9 +178,9 @@ export default function AdminDashboardArea() {
       case 'STARTER': return <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md text-xs font-bold">STARTER</span>;
       case 'BASIC': return <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-bold">BASIC</span>;
       case 'PLUS': return <span className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded-md text-xs font-bold">PLUS</span>;
-      case 'PREMIUM': return <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-xs font-bold">PREMIUM</span>;
-      case 'PRO': return <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-bold">PRO</span>;
-      case 'ULTRA': return <span className="bg-rose-100 text-rose-800 px-2 py-1 rounded-md text-xs font-bold">ULTRA</span>;
+      case 'PREMIUM': return <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-xs font-bold">PREMIUM (Legacy)</span>;
+      case 'PRO': return <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-bold">PRO (Legacy)</span>;
+      case 'ULTRA': return <span className="bg-amber-100 text-amber-900 px-2 py-1 rounded-md text-xs font-bold">OWNER VIP</span>;
       default: return <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs font-bold">{tier}</span>;
     }
   };
@@ -322,7 +322,7 @@ export default function AdminDashboardArea() {
                           <td className="px-4 py-3">
                             {isSuperAdminUser ? (
                               <span className="bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-900 border border-amber-300 px-2 py-1 rounded-md text-xs font-bold">
-                                ULTRA (Owner VIP)
+                                Owner VIP
                               </span>
                             ) : isAdminUser ? (
                               <span className="bg-gradient-to-r from-blue-100 to-indigo-100 text-indigo-900 border border-blue-300 px-2 py-1 rounded-md text-xs font-bold">

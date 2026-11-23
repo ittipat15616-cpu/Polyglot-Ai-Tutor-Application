@@ -628,3 +628,150 @@ export async function loadAllGoodnotesStates(lang: string): Promise<GoodnotesDec
 
   return states;
 }
+
+// -------------------------------------------------------------
+// 7. REAL-LIFE ROLEPLAY MISSIONS PROGRESS (EN/CN SEPARATED)
+// -------------------------------------------------------------
+export interface RoleplayProgressRecord {
+  missionId: string;
+  lang: 'EN' | 'CN';
+  completed: boolean;
+  stars: number; // 0..3
+  bestScore: number; // 0..100
+  objectivesCompletedCount: number; // 0..3
+  playCount: number;
+  lastPlayedAt: number;
+}
+
+export async function saveRoleplayMissionProgress(params: {
+  missionId: string;
+  lang: 'EN' | 'CN';
+  stars: number;
+  score: number;
+  objectivesCompletedCount: number;
+  isCustom?: boolean;
+}): Promise<RoleplayProgressRecord | null> {
+  if (!params.missionId || params.isCustom) return null;
+
+  const { missionId, lang } = params;
+  const safeStars = Math.max(0, Math.min(3, Math.round(params.stars)));
+  const safeScore = Math.max(0, Math.min(100, Math.round(params.score)));
+  const safeObj = Math.max(0, Math.min(3, Math.round(params.objectivesCompletedCount)));
+  const docKey = `${lang}_${missionId}`;
+  const localKey = getUserStorageKey(`roleplay_progress_${lang}`);
+
+  let prevLocal: Partial<RoleplayProgressRecord> = {};
+  let localMap: Record<string, RoleplayProgressRecord> = {};
+  try {
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      localMap = JSON.parse(raw);
+      if (localMap[missionId]) prevLocal = localMap[missionId];
+    }
+  } catch (e) {}
+
+  let merged: RoleplayProgressRecord = {
+    missionId,
+    lang,
+    completed: Boolean(prevLocal.completed) || safeStars >= 1,
+    stars: Math.max(prevLocal.stars || 0, safeStars),
+    bestScore: Math.max(prevLocal.bestScore || 0, safeScore),
+    objectivesCompletedCount: Math.max(prevLocal.objectivesCompletedCount || 0, safeObj),
+    playCount: (prevLocal.playCount || 0) + 1,
+    lastPlayedAt: Date.now(),
+  };
+
+  try {
+    localMap[missionId] = merged;
+    localStorage.setItem(localKey, JSON.stringify(localMap));
+  } catch (e) {}
+
+  const user = auth.currentUser;
+  if (user && db) {
+    try {
+      const docRef = doc(db, 'users', user.uid, 'roleplay_progress', docKey);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const prevRemote = snap.data() as Partial<RoleplayProgressRecord>;
+        merged = {
+          missionId,
+          lang,
+          completed: Boolean(prevRemote.completed) || merged.completed,
+          stars: Math.max(prevRemote.stars || 0, merged.stars),
+          bestScore: Math.max(prevRemote.bestScore || 0, merged.bestScore),
+          objectivesCompletedCount: Math.max(
+            prevRemote.objectivesCompletedCount || 0,
+            merged.objectivesCompletedCount
+          ),
+          playCount: Math.max(prevRemote.playCount || 0, prevLocal.playCount || 0) + 1,
+          lastPlayedAt: Date.now(),
+        };
+      }
+      await setDoc(docRef, merged, { merge: true });
+      try {
+        localMap[missionId] = merged;
+        localStorage.setItem(localKey, JSON.stringify(localMap));
+      } catch (e) {}
+    } catch (e: any) {
+      if (e?.code !== 'unavailable' && !e?.message?.includes('offline')) {
+        console.error('Error saving roleplay progress to Firestore:', e);
+      }
+    }
+  }
+
+  return merged;
+}
+
+export async function loadAllRoleplayProgress(
+  lang: 'EN' | 'CN'
+): Promise<Record<string, RoleplayProgressRecord>> {
+  const mergedMap: Record<string, RoleplayProgressRecord> = {};
+  const localKey = getUserStorageKey(`roleplay_progress_${lang}`);
+
+  try {
+    const raw = localStorage.getItem(localKey);
+    if (raw) {
+      Object.assign(mergedMap, JSON.parse(raw));
+    }
+  } catch (e) {}
+
+  const user = auth.currentUser;
+  if (user && db) {
+    try {
+      const snap = await getDocs(collection(db, 'users', user.uid, 'roleplay_progress'));
+      snap.forEach((d) => {
+        const remote = d.data() as RoleplayProgressRecord;
+        if (remote && remote.lang === lang && remote.missionId) {
+          const existing = mergedMap[remote.missionId];
+          if (!existing) {
+            mergedMap[remote.missionId] = remote;
+          } else {
+            mergedMap[remote.missionId] = {
+              missionId: remote.missionId,
+              lang,
+              completed: Boolean(existing.completed || remote.completed),
+              stars: Math.max(existing.stars || 0, remote.stars || 0),
+              bestScore: Math.max(existing.bestScore || 0, remote.bestScore || 0),
+              objectivesCompletedCount: Math.max(
+                existing.objectivesCompletedCount || 0,
+                remote.objectivesCompletedCount || 0
+              ),
+              playCount: Math.max(existing.playCount || 0, remote.playCount || 0),
+              lastPlayedAt: Math.max(existing.lastPlayedAt || 0, remote.lastPlayedAt || 0),
+            };
+          }
+        }
+      });
+      try {
+        localStorage.setItem(localKey, JSON.stringify(mergedMap));
+      } catch (e) {}
+    } catch (e: any) {
+      if (e?.code !== 'unavailable' && !e?.message?.includes('offline')) {
+        console.error('Error loading roleplay progress from Firestore:', e);
+      }
+    }
+  }
+
+  return mergedMap;
+}
+

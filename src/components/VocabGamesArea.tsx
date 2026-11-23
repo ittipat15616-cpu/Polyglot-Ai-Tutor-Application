@@ -126,7 +126,7 @@ export default function VocabGamesArea({ activeLang }: VocabGamesAreaProps) {
     const gameTitles: Record<GameId, { name: string; desc: string; icon: React.ReactNode }> = {
       NONE: { name: '', desc: '', icon: null },
       MATCH: { name: 'Match Master', desc: 'เกมจับคู่คำศัพท์ (ด่านละ 10 คำ • เวลา 60 วินาที)', icon: <Zap className="text-amber-400" /> },
-      WALL: { name: 'Wall Smasher', desc: 'เกมพูดออกเสียงทลายกำแพง (ด่านละ 20 คำ)', icon: <ShieldAlert className="text-orange-400" /> },
+      WALL: { name: 'Wall Smasher', desc: 'เกมสะกดคำศัพท์เรียงบล็อกทลายกำแพง (ด่านละ 20 คำ)', icon: <ShieldAlert className="text-orange-400" /> },
       RAIN: { name: 'Word Rain', desc: 'เกมฝนคำศัพท์ตกกระทบ (ด่านละ 20 คำ)', icon: <CloudRain className="text-blue-400" /> },
       SCRAMBLE: { name: 'Word Scramble', desc: 'เกมเรียงอักษรคำศัพท์ (ด่านละ 20 คำ)', icon: <KeyRound className="text-emerald-400" /> },
       BOMB: { name: 'Audio Bomb', desc: 'เกมฟังเสียงกู้ระเบิดเวลา (ด่านละ 20 คำ)', icon: <Bomb className="text-purple-400" /> },
@@ -316,11 +316,11 @@ export default function VocabGamesArea({ activeLang }: VocabGamesAreaProps) {
                 <ShieldAlert size={28} />
               </div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-full border border-orange-500/20">
-                เกมที่ 2 (ทลายกำแพง • ด่านละ 20 คำ)
+                เกมที่ 2 (สะกดคำทลายกำแพง • ด่านละ 20 คำ)
               </span>
               <h3 className="text-xl font-black text-white mt-2 mb-1">Wall Smasher</h3>
               <p className="text-xs text-slate-400 leading-relaxed mb-6">
-                กำแพงขึ้นทีละด่าน พูดออกเสียงตามป้ายคำแนะนำด้านขวาบนเพื่อพังกำแพงลงมา!
+                แตะเรียงบล็อกตัวอักษรสะกดคำศัพท์ให้ตรงกับคำแปลภายใน 15 วินาที เพื่อทลายกำแพงทีละด่าน ระวังตัวหลอกและรักษาพลังชีวิต 3 ดวง!
               </p>
             </div>
             <button
