@@ -25,7 +25,11 @@ import {
   getResetTimeLabelThai,
   getStoredByokKey,
 } from '../../services/byokService';
-import { getFirebaseAuthHeaders } from '../../services/authHeaders';
+import { getFirebaseAuthHeaders, openLoginModal } from '../../services/authHeaders';
+import { syncByokDailyUsageWithFirestore } from '../../services/byokService';
+import { deductCredit, getTotalCredits, loadUserSubscription } from '../../services/subscriptionService';
+import { auth } from '../../firebase';
+import ByokQuotaFallbackModal, { QuotaFallbackReason } from '../ByokQuotaFallbackModal';
 
 interface SentenceShadowingPanelProps {
   sentence: string;
@@ -137,6 +141,13 @@ export default function SentenceShadowingPanel({
   const [isPlayingUser, setIsPlayingUser] = useState(false);
 
   const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('shadowing_analyze'));
+  const [analysisMode, setAnalysisMode] = useState<'free' | 'ai'>(() => {
+    const q = getByokQuotaStatus('shadowing_analyze');
+    return q.hasKey && q.canUseFree ? 'ai' : 'free';
+  });
+  const [needsLoginPrompt, setNeedsLoginPrompt] = useState(false);
+  const [fallbackModalReason, setFallbackModalReason] = useState<QuotaFallbackReason | null>(null);
+  const [lastUsedPaidCredits, setLastUsedPaidCredits] = useState(false);
 
   const speechSupported = Boolean(getSpeechRecognitionCtor());
   const mediaRecorderSupported =
@@ -159,6 +170,7 @@ export default function SentenceShadowingPanel({
   const timerRef = useRef<number | null>(null);
   const evalTimeoutRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordedBlobRef = useRef<{ blob: Blob; mimeType: string } | null>(null);
   const latestTranscriptRef = useRef('');
   const hasEvaluatedRef = useRef(false);
   const recordedUrlRef = useRef<string | null>(null);
@@ -305,6 +317,7 @@ export default function SentenceShadowingPanel({
     stopAllAudioPlayback();
     abortPreviousSession();
     revokeRecordedUrl();
+    recordedBlobRef.current = null;
     setIsRecording(false);
     setIsAnalyzingAi(false);
     setLiveTranscript('');
@@ -313,6 +326,9 @@ export default function SentenceShadowingPanel({
     setAiFeedback(null);
     setInfoMsg(null);
     setErrorMsg(null);
+    setNeedsLoginPrompt(false);
+    setFallbackModalReason(null);
+    setLastUsedPaidCredits(false);
     setElapsedSec(0);
     latestTranscriptRef.current = '';
     hasEvaluatedRef.current = false;
@@ -472,24 +488,38 @@ export default function SentenceShadowingPanel({
     setErrorMsg('ยังไม่ได้รับสัญญาณเสียงจากไมโครโฟน ลองตรวจสอบไมค์แล้วกดเริ่มใหม่อีกครั้ง');
   };
 
-  const analyzeAudioWithByokAi = async (sid: number, blob: Blob, mimeType: string) => {
+  const executeShadowingAiAnalysis = async (
+    sid: number,
+    blob: Blob,
+    mimeType: string,
+    paidWithCredits: boolean
+  ) => {
     if (sessionIdRef.current !== sid) return;
 
-    const byokKey = getStoredByokKey();
-    const latestQuota = getByokQuotaStatus('shadowing_analyze');
-    if (!byokKey || !latestQuota.canUseFree) {
-      finalizeFreeEvaluation(sid, latestTranscriptRef.current, blob.size > 1000);
-      return;
-    }
-
     if (blob.size < 800) {
-      setErrorMsg('คลิปเสียงสั้นเกินไป ลองกดไมค์ค้างไว้และอ่านให้จบประโยคแล้วค่อยกดหยุดนะ');
+      setErrorMsg('คลิปเสียงสั้นเกินไป ลองกดไมค์พูดให้จบประโยคแล้วค่อยกดหยุดนะ');
       return;
     }
 
+    if (!auth.currentUser?.uid) {
+      setNeedsLoginPrompt(true);
+      setErrorMsg('กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI วิเคราะห์เสียงพูดครับ (คุณยังกด "ฟังเสียงของฉัน" เทียบต้นฉบับได้ฟรี)');
+      return;
+    }
+
+    if (paidWithCredits) {
+      const sub = await loadUserSubscription();
+      if (getTotalCredits(sub) < 1) {
+        setFallbackModalReason('insufficient_credits');
+        return;
+      }
+    }
+
+    const byokKey = paidWithCredits ? null : getStoredByokKey();
     setIsAnalyzingAi(true);
     setErrorMsg(null);
     setInfoMsg(null);
+    setNeedsLoginPrompt(false);
 
     try {
       const audioBase64 = await blobToBase64(blob);
@@ -504,7 +534,8 @@ export default function SentenceShadowingPanel({
           mimeType,
           sentence,
           lang,
-          byokKey,
+          byokKey: byokKey || undefined,
+          paidWithCredits,
         }),
       });
 
@@ -512,6 +543,20 @@ export default function SentenceShadowingPanel({
       if (sessionIdRef.current !== sid) return;
 
       if (!res.ok) {
+        if (res.status === 401 && !data?.byokInvalidKey) {
+          setNeedsLoginPrompt(true);
+          setErrorMsg(data?.error || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI วิเคราะห์เสียงพูดครับ');
+          return;
+        }
+        if (!paidWithCredits && (res.status === 429 || data?.byokQuotaExhausted || data?.byokInvalidKey)) {
+          setFallbackModalReason('byok_google_429');
+          return;
+        }
+        if (!paidWithCredits && data?.byokRequired) {
+          const sub = await loadUserSubscription();
+          setFallbackModalReason(getTotalCredits(sub) >= 1 ? 'no_byok_credit_confirm' : 'insufficient_credits');
+          return;
+        }
         setErrorMsg(
           data?.error ||
             'ไม่สามารถวิเคราะห์เสียงด้วย AI ได้ชั่วคราว แต่คุณยังกด "ฟังเสียงของฉัน" เทียบต้นฉบับได้ปกติ'
@@ -519,20 +564,25 @@ export default function SentenceShadowingPanel({
         return;
       }
 
-      // Consume 1 BYOK shadowing quota unit after a successful AI response
-      await consumeByokFreeQuota('shadowing_analyze');
-      if (sessionIdRef.current !== sid) return;
-      setByokQuota(getByokQuotaStatus('shadowing_analyze'));
-
       const transcript = typeof data?.transcript === 'string' ? data.transcript.trim() : '';
       const heardSpeech = Boolean(data?.heardSpeech && transcript.length > 0);
 
       if (!heardSpeech) {
         setErrorMsg(
-          'AI ยังไม่ได้ยินเสียงพูดชัดเจนในคลิปนี้ ลองกด "ฟังเสียงของฉัน" เช็กความดังไมค์ หรือพูดใกล้ไมโครโฟนมากขึ้นแล้วลองใหม่นะ'
+          'AI ยังไม่ได้ยินเสียงพูดชัดเจนในคลิปนี้ (ยังไม่หักสิทธิ์/เครดิต) ลองกด "ฟังเสียงของฉัน" เช็กไมค์ หรือพูดใกล้ไมโครโฟนมากขึ้นแล้วลองใหม่นะ'
         );
         return;
       }
+
+      if (paidWithCredits) {
+        await deductCredit(1);
+        setLastUsedPaidCredits(true);
+      } else {
+        await consumeByokFreeQuota('shadowing_analyze');
+        setLastUsedPaidCredits(false);
+      }
+      if (sessionIdRef.current !== sid) return;
+      setByokQuota(getByokQuotaStatus('shadowing_analyze'));
 
       hasEvaluatedRef.current = true;
       setFinalTranscript(transcript);
@@ -573,6 +623,36 @@ export default function SentenceShadowingPanel({
         setIsAnalyzingAi(false);
       }
     }
+  };
+
+  const requestAiAnalysisForRecording = async (sid: number, blob: Blob, mimeType: string) => {
+    if (sessionIdRef.current !== sid) return;
+    if (blob.size < 800) {
+      setErrorMsg('คลิปเสียงสั้นเกินไป ลองกดไมค์พูดให้จบประโยคแล้วค่อยกดหยุดนะ');
+      return;
+    }
+    if (!auth.currentUser?.uid) {
+      setNeedsLoginPrompt(true);
+      setErrorMsg('กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI วิเคราะห์เสียงพูดครับ (คุณยังกด "ฟังเสียงของฉัน" เทียบต้นฉบับได้ฟรี)');
+      return;
+    }
+
+    await syncByokDailyUsageWithFirestore().catch(() => {});
+    const latestQuota = getByokQuotaStatus('shadowing_analyze');
+    setByokQuota(latestQuota);
+
+    if (latestQuota.hasKey && latestQuota.canUseFree) {
+      await executeShadowingAiAnalysis(sid, blob, mimeType, false);
+      return;
+    }
+
+    if (latestQuota.hasKey && !latestQuota.canUseFree) {
+      setFallbackModalReason('byok_daily_exhausted');
+      return;
+    }
+
+    const sub = await loadUserSubscription();
+    setFallbackModalReason(getTotalCredits(sub) >= 1 ? 'no_byok_credit_confirm' : 'insufficient_credits');
   };
 
   const stopRecording = () => {
@@ -629,17 +709,19 @@ export default function SentenceShadowingPanel({
     stopAllAudioPlayback();
     abortPreviousSession();
     revokeRecordedUrl();
+    recordedBlobRef.current = null;
 
     const sid = ++sessionIdRef.current;
     const latestQuota = getByokQuotaStatus('shadowing_analyze');
-    const shouldUseByokAi = Boolean(
-      mediaRecorderSupported && latestQuota.canUseFree && getStoredByokKey()
-    );
-    usingAiModeRef.current = shouldUseByokAi;
+    const shouldUseAiMode = Boolean(mediaRecorderSupported && analysisMode === 'ai');
+    usingAiModeRef.current = shouldUseAiMode;
     setByokQuota(latestQuota);
 
     setErrorMsg(null);
     setInfoMsg(null);
+    setNeedsLoginPrompt(false);
+    setFallbackModalReason(null);
+    setLastUsedPaidCredits(false);
     setLiveTranscript('');
     setFinalTranscript('');
     setDiffResult(null);
@@ -726,6 +808,7 @@ export default function SentenceShadowingPanel({
           let finalBlob: Blob | null = null;
           if (chunksRef.current.length > 0) {
             finalBlob = new Blob(chunksRef.current, { type: effectiveMime });
+            recordedBlobRef.current = { blob: finalBlob, mimeType: effectiveMime };
             const url = URL.createObjectURL(finalBlob);
             recordedUrlRef.current = url;
             setRecordedAudioUrl(url);
@@ -734,9 +817,9 @@ export default function SentenceShadowingPanel({
           cleanupMicResources();
           mediaRecorderRef.current = null;
 
-          if (shouldUseByokAi) {
+          if (shouldUseAiMode) {
             if (finalBlob && finalBlob.size > 0) {
-              analyzeAudioWithByokAi(sid, finalBlob, effectiveMime);
+              requestAiAnalysisForRecording(sid, finalBlob, effectiveMime);
             } else {
               setErrorMsg('ยังไม่ได้รับสัญญาณเสียงจากไมโครโฟน กรุณาลองกดเริ่มใหม่อีกครั้ง');
             }
@@ -772,7 +855,7 @@ export default function SentenceShadowingPanel({
           setErrorMsg('กรุณาอนุญาตการใช้ไมโครโฟนในเบราว์เซอร์ก่อนเริ่มฝึกพูด');
           return;
         }
-        if (!speechSupported || shouldUseByokAi) {
+        if (!speechSupported || shouldUseAiMode) {
           isStartingRef.current = false;
           setErrorMsg('ไม่สามารถเปิดไมโครโฟนได้ กรุณาตรวจสอบอุปกรณ์เสียงของคุณ');
           return;
@@ -780,10 +863,10 @@ export default function SentenceShadowingPanel({
       }
     }
 
-    // 3. Only attach Web Speech API in free (non-BYOK) mode on non-iOS browsers
-    //    so it NEVER competes with MediaRecorder when BYOK AI is active or on Safari/iOS.
+    // 3. Only attach Web Speech API in free mode on non-iOS browsers
+    //    so it NEVER competes with MediaRecorder when AI audio capture is active or on Safari/iOS.
     const SpeechRecognition = getSpeechRecognitionCtor();
-    if (!shouldUseByokAi && SpeechRecognition && !isLikelyIosOrSafari()) {
+    if (!shouldUseAiMode && SpeechRecognition && !isLikelyIosOrSafari()) {
       try {
         const recognition = new SpeechRecognition();
         recognition.lang = lang === 'CN' ? 'zh-CN' : 'en-US';
@@ -853,6 +936,7 @@ export default function SentenceShadowingPanel({
     stopAllAudioPlayback();
     abortPreviousSession();
     revokeRecordedUrl();
+    recordedBlobRef.current = null;
     setIsRecording(false);
     setIsAnalyzingAi(false);
     setLiveTranscript('');
@@ -861,20 +945,23 @@ export default function SentenceShadowingPanel({
     setAiFeedback(null);
     setInfoMsg(null);
     setErrorMsg(null);
+    setNeedsLoginPrompt(false);
+    setFallbackModalReason(null);
+    setLastUsedPaidCredits(false);
     setElapsedSec(0);
     latestTranscriptRef.current = '';
     hasEvaluatedRef.current = false;
   };
 
   const formatTimer = (sec: number) => `0:${String(sec).padStart(2, '0')}`;
-  const isAiModeReady = byokQuota.canUseFree;
+  const isAiModeReady = analysisMode === 'ai';
 
   return (
     <div className="mt-4 rounded-2xl border border-indigo-200/80 bg-slate-50/80 p-4 sm:p-5 animate-in fade-in duration-200">
       {/* Panel Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200/80">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+      <div className="flex flex-wrap items-start justify-between gap-3 pb-3 mb-4 border-b border-slate-200/80">
+        <div className="flex items-start gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5">
             <Mic size={16} />
           </div>
           <div>
@@ -885,24 +972,24 @@ export default function SentenceShadowingPanel({
               {byokQuota.hasKey ? (
                 <span
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${
-                    isAiModeReady
+                    byokQuota.canUseFree
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : 'bg-amber-50 text-amber-700 border-amber-200'
                   }`}
                 >
                   <Sparkles size={11} />
-                  {isAiModeReady
-                    ? `AI ตรวจเสียง (BYOK) • เหลือ ${byokQuota.remaining}/${byokQuota.limit}`
-                    : `AI ครบ ${byokQuota.limit}/${byokQuota.limit} วันนี้ • ฟังเทียบเสียงฟรี`}
+                  {byokQuota.canUseFree
+                    ? `BYOK ฟรีเหลือ ${byokQuota.remaining}/${byokQuota.limit} วันนี้`
+                    : `BYOK ครบวันนี้ · ใช้ AI ต่อ 1 เครดิต/ครั้ง`}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                  โหมดฟังเทียบเสียงฟรี • เชื่อม BYOK เพื่อเปิด AI ตรวจเสียง {BYOK_DAILY_LIMITS.shadowing_analyze} ครั้ง/วัน
+                  โหมดฟรี 0 เครดิต · ใช้ AI ตรวจเสียง (BYOK ฟรี / 1 เครดิต)
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              1. ฟังต้นฉบับ → 2. กดไมค์พูดตาม → 3. {isAiModeReady ? 'AI ฟังเสียงจริง ตรวจคำ & แนะนำการออกเสียง' : 'ฟังเสียงตัวเองเทียบกับต้นฉบับ'}
+              1. ฟังต้นฉบับ → 2. กดไมค์พูดตาม → 3. {isAiModeReady ? 'AI ฟังเสียงจริง ตรวจคำ & แนะนำการออกเสียง' : 'ฟังเสียงตัวเองเทียบต้นฉบับฟรี'}
             </p>
           </div>
         </div>
@@ -914,6 +1001,36 @@ export default function SentenceShadowingPanel({
           title="ปิดโหมดฝึกพูด"
         >
           <X size={16} />
+        </button>
+      </div>
+
+      {/* Clear 2-Button Mode Selector: Free vs AI */}
+      <div className="grid grid-cols-2 gap-1.5 p-1 bg-white border border-slate-200 rounded-xl mb-4">
+        <button
+          type="button"
+          disabled={isRecording || isAnalyzingAi}
+          onClick={() => setAnalysisMode('free')}
+          className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
+            analysisMode === 'free'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Headphones size={14} />
+          <span>แบบฟรี (ฟังเทียบ 0 เครดิต)</span>
+        </button>
+        <button
+          type="button"
+          disabled={isRecording || isAnalyzingAi}
+          onClick={() => setAnalysisMode('ai')}
+          className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
+            analysisMode === 'ai'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/50'
+          }`}
+        >
+          <Sparkles size={14} />
+          <span>ใช้ AI ตรวจเสียง (BYOK / 1 เครดิต)</span>
         </button>
       </div>
 
@@ -1117,6 +1234,23 @@ export default function SentenceShadowingPanel({
               <Play size={12} fill="currentColor" />
               <span>เทียบต้นฉบับ</span>
             </button>
+
+            {!aiFeedback && recordedBlobRef.current && !isAnalyzingAi && (
+              <button
+                type="button"
+                onClick={() => {
+                  const rec = recordedBlobRef.current;
+                  if (rec) {
+                    setAnalysisMode('ai');
+                    requestAiAnalysisForRecording(sessionIdRef.current, rec.blob, rec.mimeType);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors cursor-pointer"
+              >
+                <Sparkles size={13} />
+                <span>ส่งคลิปนี้ให้ AI ตรวจ (BYOK / 1 เครดิต)</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1157,9 +1291,20 @@ export default function SentenceShadowingPanel({
 
       {/* Error Message */}
       {errorMsg && !isRecording && !isAnalyzingAi && (
-        <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-medium text-amber-900 flex items-center gap-2">
-          <AlertCircle size={15} className="text-amber-600 shrink-0" />
-          <span>{errorMsg}</span>
+        <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-medium text-amber-900 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={15} className="text-amber-600 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          {needsLoginPrompt && (
+            <button
+              type="button"
+              onClick={() => openLoginModal()}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
+            >
+              เข้าสู่ระบบด้วย Google
+            </button>
+          )}
         </div>
       )}
 
@@ -1198,7 +1343,7 @@ export default function SentenceShadowingPanel({
                 </span>
                 {aiFeedback && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/80 border border-slate-200/80 text-[10px] font-bold text-indigo-700">
-                    <Sparkles size={10} /> AI ฟังเสียงจริง
+                    <Sparkles size={10} /> AI ฟังเสียงจริง {lastUsedPaidCredits ? '(-1 เครดิต)' : '(BYOK)'}
                   </span>
                 )}
               </div>
@@ -1234,6 +1379,22 @@ export default function SentenceShadowingPanel({
           )}
         </div>
       )}
+
+      <ByokQuotaFallbackModal
+        isOpen={Boolean(fallbackModalReason)}
+        onClose={() => setFallbackModalReason(null)}
+        feature="shadowing_analyze"
+        reason={fallbackModalReason || 'no_byok_credit_confirm'}
+        creditCost={1}
+        isBusy={isAnalyzingAi}
+        onUseCredits={async () => {
+          const rec = recordedBlobRef.current;
+          setFallbackModalReason(null);
+          if (rec) {
+            await executeShadowingAiAnalysis(sessionIdRef.current, rec.blob, rec.mimeType, true);
+          }
+        }}
+      />
     </div>
   );
 }

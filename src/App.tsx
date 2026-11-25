@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Book, BookOpen, BookMarked, Video, Pencil, Layers, FileSignature, UserCircle, Sparkles, Clock, Phone, Library, MessageSquare, Download, Gamepad2, Bot, LogOut, ZoomIn, ZoomOut, Timer, Shield, Calendar, Captions, Smartphone, Music, Newspaper, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Book, BookOpen, BookMarked, Video, Pencil, Layers, FileSignature, UserCircle, Sparkles, Clock, Phone, Library, MessageSquare, Download, Gamepad2, Bot, LogOut, ZoomIn, ZoomOut, Timer, Shield, Calendar, Captions, Smartphone, Music, Newspaper, ChevronLeft, ChevronRight, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LoginArea, { UserProfile } from './components/LoginArea';
 import LessonsArea from './components/LessonsArea';
@@ -17,6 +17,7 @@ import VocabArea from './components/VocabArea';
 import VocabExamArea from './components/VocabExamArea';
 import LearningPlanModal from './components/LearningPlanModal';
 import VocabGamesArea from './components/VocabGamesArea';
+import TranslatorArea from './components/translator/TranslatorArea';
 import TutorialOverlay from './components/tutorial/TutorialOverlay';
 import { TUTORIAL_SCRIPTS } from './data/tutorialData';
 import { initAuth, logout, listenToUserSession } from './firebase';
@@ -63,6 +64,7 @@ const NAV_ITEMS = [
   { id: 'vocab',      icon: Pencil,         label: 'คัดศัพท์'     },
   { id: 'vocab_exam', icon: FileSignature,  label: 'สอบศัพท์'     },
   { id: 'vocab_games',icon: Gamepad2,      label: 'เกมคำศัพท์'   },
+  { id: 'translate',  icon: Languages,     label: 'แปลภาษา'     },
   { id: 'exercises',  icon: Book,           label: 'บทเรียน'      },
   { id: 'exams',      icon: Layers,         label: 'ข้อสอบ'       },
   { id: 'mocktests',  icon: Clock,          label: 'จำลองสอบ'     },
@@ -717,6 +719,11 @@ export default function App() {
             {activeTab === 'vocab_games' && (
               <motion.div key={`vocab_games_${currentUser?.uid || 'guest'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
                 <VocabGamesArea activeLang={activeLang} />
+              </motion.div>
+            )}
+            {activeTab === 'translate' && (
+              <motion.div key={`translate_${currentUser?.uid || 'guest'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
+                <TranslatorArea activeLang={activeLang} onOpenByok={() => setShowByokModal(true)} />
               </motion.div>
             )}
             {activeTab === 'exercises' && (

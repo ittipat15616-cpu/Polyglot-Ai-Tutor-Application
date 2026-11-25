@@ -12,6 +12,8 @@ import {
   X,
   BookOpen,
   CloudCheck,
+  Zap,
+  AlertCircle,
 } from 'lucide-react';
 import { RoleplayMission, RoleplayReportData } from '../../data/roleplay';
 import { playRoleplayPhraseAudio, stopRoleplayPhraseAudio } from './ttsHelper';
@@ -21,7 +23,14 @@ interface RoleplayReportModalProps {
   nextMission: RoleplayMission | null;
   report: RoleplayReportData | null;
   isLoading: boolean;
+  isAiUpgrading?: boolean;
+  hasByok?: boolean;
+  byokQuotaRemaining?: number;
+  byokQuotaLimit?: number;
+  aiError?: string | null;
   savedToCloud: boolean;
+  onSelectFreeSummary?: () => void;
+  onRequestAiReport?: () => void;
   onRetry: () => void;
   onNextMission?: (next: RoleplayMission) => void;
   onBackToLobby: () => void;
@@ -39,7 +48,14 @@ export const RoleplayReportModal: React.FC<RoleplayReportModalProps> = ({
   nextMission,
   report,
   isLoading,
+  isAiUpgrading = false,
+  hasByok = false,
+  byokQuotaRemaining = 0,
+  byokQuotaLimit = 100,
+  aiError = null,
   savedToCloud,
+  onSelectFreeSummary,
+  onRequestAiReport,
   onRetry,
   onNextMission,
   onBackToLobby,
@@ -73,13 +89,15 @@ export const RoleplayReportModal: React.FC<RoleplayReportModalProps> = ({
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-slate-50/80">
           <div className="min-w-0">
             <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
-              Mission Report Card · สรุปผลฟรี
+              {report?.usedAiAnalysis
+                ? 'Mission Report Card · วิเคราะห์เจาะลึกด้วย AI'
+                : 'Mission Report Card · สรุปผลแบบฟรี (0 เครดิต)'}
             </div>
             <h3 className="text-lg font-bold text-slate-900 truncate mt-0.5">
               {mission.titleTh}
             </h3>
           </div>
-          {!isLoading && (
+          {!isLoading && !isAiUpgrading && (
             <button
               type="button"
               onClick={onBackToLobby}
@@ -99,15 +117,69 @@ export const RoleplayReportModal: React.FC<RoleplayReportModalProps> = ({
             </div>
             <div className="space-y-1">
               <h4 className="text-base font-bold text-slate-900">
-                กำลังวิเคราะห์บทสนทนาและสรุปผลภารกิจให้ฟรี...
+                กำลังสรุปผลภารกิจของคุณ (ฟรี 0 เครดิต)...
               </h4>
               <p className="text-sm text-slate-500">
-                โค้ช AI กำลังตรวจเช็กภารกิจทั้ง 3 ข้อและคัดประโยคอัปเกรดให้คุณ (ไม่หักเครดิตเพิ่ม)
+                ระบบกำลังคำนวณคะแนนและดาวจากภารกิจทั้ง 3 ข้อที่คุณทำสำเร็จในสาย
               </p>
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-6">
+          <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-5">
+            {/* Explicit 2-Button Report Mode Choice */}
+            {(onSelectFreeSummary || onRequestAiReport) && (
+              <div className="p-2 rounded-2xl bg-slate-100 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isAiUpgrading}
+                  onClick={() => onSelectFreeSummary?.()}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer disabled:opacity-60 ${
+                    !report.usedAiAnalysis
+                      ? 'bg-white border-emerald-300 text-emerald-700 shadow-xs'
+                      : 'bg-transparent border-transparent text-slate-600 hover:bg-white/60'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>สรุปผลแบบฟรี (0 เครดิต)</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isAiUpgrading}
+                  onClick={() => onRequestAiReport?.()}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer disabled:opacity-60 ${
+                    report.usedAiAnalysis
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                      : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                  }`}
+                >
+                  {isAiUpgrading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>กำลังวิเคราะห์ด้วย AI...</span>
+                    </>
+                  ) : (
+                    <>
+                      {hasByok ? <Sparkles className="w-4 h-4 shrink-0" /> : <Zap className="w-4 h-4 shrink-0" />}
+                      <span>
+                        {report.usedAiAnalysis
+                          ? 'วิเคราะห์เจาะลึกด้วย AI แล้ว'
+                          : hasByok && byokQuotaRemaining > 0
+                          ? `ใช้ AI วิเคราะห์ลึก (BYOK ฟรี ${byokQuotaRemaining}/${byokQuotaLimit})`
+                          : 'ใช้ AI วิเคราะห์ลึก (BYOK / 1 เครดิต)'}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {aiError && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>{aiError}</span>
+              </div>
+            )}
+
             {/* Hero Score & Stars */}
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex flex-col items-center sm:items-start gap-2">

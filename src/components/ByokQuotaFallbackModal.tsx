@@ -32,6 +32,7 @@ const FEATURE_META: Record<ByokQuotaFeature, { labelTh: string; unitTh: string }
   roleplay_custom: { labelTh: 'สร้างด่านจำลองสถานการณ์เอง (AI)', unitTh: 'ด่าน' },
   roleplay_report: { labelTh: 'วิเคราะห์ใบสรุปคะแนน Roleplay (AI)', unitTh: 'ครั้ง' },
   shadowing_analyze: { labelTh: 'วิเคราะห์เสียงฝึกพูดตามประโยค (AI)', unitTh: 'ครั้ง' },
+  translate_ai: { labelTh: 'แปลภาษา AI เจาะลึก (Smart Translator)', unitTh: 'ครั้ง' },
 };
 
 export const ByokQuotaFallbackModal: React.FC<ByokQuotaFallbackModalProps> = ({
@@ -76,7 +77,10 @@ export const ByokQuotaFallbackModal: React.FC<ByokQuotaFallbackModalProps> = ({
       description = `การ${meta.labelTh}ใช้ ${creditCost} เครดิต (คงเหลือ ${totalCredits} เครดิต) คุณสามารถเติมเครดิต หรือเชื่อม Gemini API Key ส่วนตัว (BYOK) เพื่อรับสิทธิ์ฟรีทุกวันได้ครับ`;
     } else {
       title = `ยืนยันการใช้ ${creditCost} เครดิตสำหรับ${meta.labelTh}`;
-      description = `เมื่อแปลและบันทึกสำเร็จแล้ว ระบบจะเก็บลงคลังกลางเพื่อให้เปิดใช้งานซ้ำฟรีตลอดไป หรือคุณสามารถเชื่อม BYOK ฟรีเพื่อรับสิทธิ์ฟรีวันละ ${dailyLimit} ${meta.unitTh}`;
+      description =
+        feature === 'karaoke_translate'
+          ? `เมื่อแปลและบันทึกสำเร็จแล้ว ระบบจะเก็บลงคลังกลางเพื่อให้เปิดใช้งานซ้ำฟรีตลอดไป หรือคุณสามารถเชื่อม BYOK ฟรีเพื่อรับสิทธิ์ฟรีวันละ ${dailyLimit} ${meta.unitTh}`
+          : `คุณยังไม่ได้เชื่อมคีย์ฟรี BYOK หรือต้องการใช้สิทธิ์ผ่านเซิร์ฟเวอร์ระบบ (${creditCost} เครดิต/ครั้ง) — หรือเชื่อมคีย์ฟรี BYOK เพื่อรับสิทธิ์ฟรีวันละ ${dailyLimit} ${meta.unitTh}`;
     }
   }
 
@@ -167,7 +171,7 @@ export const ByokQuotaFallbackModal: React.FC<ByokQuotaFallbackModalProps> = ({
                   type="button"
                   onClick={() => {
                     onClose();
-                    window.dispatchEvent(new CustomEvent('open_subscription_modal', { detail: { tab: 'topup' } }));
+                    window.dispatchEvent(new CustomEvent('open-subscription-modal', { detail: { tab: 'topup' } }));
                   }}
                   className="w-full py-3 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-2"
                 >

@@ -591,13 +591,21 @@ export async function searchAlternativeLrcVersions(
 export async function explainKaraokeWord(
   word: string,
   lineText: string,
-  language: KaraokeLanguage
+  language: KaraokeLanguage,
+  options?: { paidWithCredits?: boolean }
 ): Promise<WordExplainResult> {
-  const byokKey = getStoredByokKey();
+  const paidWithCredits = Boolean(options?.paidWithCredits);
+  const byokKey = paidWithCredits ? null : getStoredByokKey();
   const res = await fetch('/api/karaoke/explain-word', {
     method: 'POST',
     headers: await getFirebaseAuthHeaders(),
-    body: JSON.stringify({ word, lineText, language, byokKey }),
+    body: JSON.stringify({
+      word,
+      lineText,
+      language,
+      byokKey: byokKey || undefined,
+      paidWithCredits,
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -606,7 +614,7 @@ export async function explainKaraokeWord(
     err.byokInvalidKey = Boolean(data.byokInvalidKey);
     err.authRequired = Boolean(data.authRequired || (res.status === 401 && !data.byokInvalidKey));
     err.byokRequired = Boolean(data.byokRequired || res.status === 403);
-    err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
+    err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || (!paidWithCredits && res.status === 429));
     throw err;
   }
   return data;

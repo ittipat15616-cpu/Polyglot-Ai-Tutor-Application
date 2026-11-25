@@ -815,11 +815,11 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
           voice = 'th-TH-NiwatNeural';
           edgeLang = 'th-TH';
           googleLang = 'th';
-      } else if (lang === 'Japanese') {
+      } else if (lang === 'JP' || lang === 'JA' || lang === 'Japanese') {
           voice = 'ja-JP-NanamiNeural';
           edgeLang = 'ja-JP';
           googleLang = 'ja';
-      } else if (lang === 'Korean') {
+      } else if (lang === 'KR' || lang === 'KO' || lang === 'Korean') {
           voice = 'ko-KR-SunHiNeural';
           edgeLang = 'ko-KR';
           googleLang = 'ko';
@@ -942,6 +942,7 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
         useByokQuota = false,
         byokKey,
         paidCallWithCredits = false,
+        paidWithCredits = false,
       } = req.body || {};
 
       if (!mission || !mission.id) {
@@ -1046,14 +1047,15 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
       }
 
       const cleanByok = typeof byokKey === "string" && byokKey.trim().length > 15 ? byokKey.trim() : null;
-      const shouldUseByok = Boolean(useByokQuota && cleanByok);
-      const canUseServerKey = !shouldUseByok && Boolean(paidCallWithCredits);
+      const isCreditPaid = Boolean(paidCallWithCredits || paidWithCredits);
+      const shouldUseByok = Boolean(useByokQuota && !isCreditPaid && cleanByok);
+      const canUseServerKey = !shouldUseByok && isCreditPaid;
 
       // STRICT 0-COST GUARD: If neither BYOK nor a credit-paid call, NEVER call owner's server key!
       if (!shouldUseByok && !canUseServerKey) {
         return res.json(
           buildLocalSummary(
-            "บันทึกผลการทำภารกิจเรียบร้อยแล้วครับ! เชื่อมต่อคีย์ฟรี BYOK เพื่อปลดล็อกใบสรุปคะแนนวิเคราะห์ประโยคพูดด้วย AI ฟรีสูงสุด 100 ครั้ง/วัน"
+            "สรุปผลตามภารกิจเรียบร้อยครับ! เลือก \"วิเคราะห์เจาะลึกด้วย AI\" เพื่อดูคำแนะนำละเอียดและประโยคอัพเกรด (ใช้ BYOK ฟรี 100 ครั้ง/วัน หรือ 1 เครดิต)"
           )
         );
       }
@@ -1206,6 +1208,13 @@ Return strict JSON matching the schema.`;
       });
     } catch (e: any) {
       console.error("[Roleplay Report API Error]:", e?.message || e);
+      const isByok429 = Boolean(
+        req.body?.useByokQuota &&
+          !req.body?.paidWithCredits &&
+          !req.body?.paidCallWithCredits &&
+          (e instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(e))
+      );
+      const isByokBadKey = Boolean(e instanceof ByokInvalidKeyError);
       // Graceful local fallback so the user ALWAYS gets a Report Card without crashing
       const {
         mission = {},
@@ -1236,8 +1245,9 @@ Return strict JSON matching the schema.`;
           vocabulary: fallbackScore,
           naturalness: fallbackScore,
         },
-        summaryTh:
-          "บันทึกผลการทำภารกิจเรียบร้อยแล้วครับ! ระบบวิเคราะห์ AI ช่วงนี้หนาแน่นจึงสรุปผลจากภารกิจที่คุณทำสำเร็จให้ก่อน สามารถฝึกซ้ำเพื่อพัฒนาความคล่องแคล่วได้ตลอดเลยครับ",
+        summaryTh: isByok429
+          ? "คีย์ฟรี BYOK ติดขีดจำกัดชั่วคราว (429) จึงแสดงสรุปผลแบบพื้นฐานให้ก่อน คุณสามารถกดวิเคราะห์ด้วย AI อีกครั้งหรือใช้ 1 เครดิตเพื่อดูคำแนะนำเชิงลึกได้ครับ"
+          : "บันทึกผลการทำภารกิจเรียบร้อยแล้วครับ! ระบบวิเคราะห์ AI ช่วงนี้หนาแน่นจึงสรุปผลจากภารกิจที่คุณทำสำเร็จให้ก่อน สามารถฝึกซ้ำเพื่อพัฒนาความคล่องแคล่วได้ตลอดเลยครับ",
         improvements: [],
         keyVocab: Array.isArray(mission.survivalKit)
           ? mission.survivalKit.slice(0, 4).map((p: any) => ({
@@ -1247,6 +1257,8 @@ Return strict JSON matching the schema.`;
             }))
           : [],
         usedAiAnalysis: false,
+        byokQuotaExhausted: isByok429,
+        byokInvalidKey: isByokBadKey,
       });
     }
   });
@@ -1415,8 +1427,11 @@ Return strict JSON matching the schema.`;
   // GRADED READING STUDIO — CUSTOM ARTICLE ANALYSIS API (BYOK / 2 CREDITS)
   // =========================================================================
   app.post("/api/shadowing/analyze", requireFirebaseAuth, express.json({ limit: "8mb" }), async (req, res) => {
+    const reqPaidWithCredits = Boolean(req.body?.paidWithCredits);
+    const reqByok = typeof req.body?.byokKey === "string" && req.body.byokKey.trim().length > 15 ? req.body.byokKey.trim() : null;
+    const wasByokRequest = Boolean(!reqPaidWithCredits && reqByok);
     try {
-      const { audioBase64, mimeType, sentence, lang = "EN", byokKey } = req.body || {};
+      const { audioBase64, mimeType, sentence, lang = "EN" } = req.body || {};
 
       if (!sentence || typeof sentence !== "string" || sentence.trim().length < 1 || sentence.trim().length > 500) {
         return res.status(400).json({ error: "ประโยคต้นแบบไม่ถูกต้อง" });
@@ -1428,11 +1443,12 @@ Return strict JSON matching the schema.`;
         return res.status(400).json({ error: "ไฟล์เสียงยาวเกินไป กรุณาพูดให้กระชับภายใน 20 วินาที" });
       }
 
-      const cleanByok = typeof byokKey === "string" && byokKey.trim().length > 15 ? byokKey.trim() : null;
-      if (!cleanByok) {
+      const shouldUseByok = wasByokRequest;
+      const canUseServerKey = reqPaidWithCredits;
+      if (!shouldUseByok && !canUseServerKey) {
         return res.status(400).json({
           byokRequired: true,
-          error: "ต้องเชื่อมคีย์ฟรี BYOK ก่อนใช้ AI วิเคราะห์เสียงพูด (โหมดอัดเสียงฟังเทียบต้นฉบับยังใช้งานฟรีได้ตลอด)",
+          error: "ต้องเชื่อมคีย์ฟรี BYOK (100 ครั้ง/วัน) หรือใช้ 1 เครดิตในแอปเพื่อใช้ AI วิเคราะห์เสียงพูด",
         });
       }
 
@@ -1502,7 +1518,7 @@ Listen carefully to the attached audio recording and return strict JSON:
 4. feedbackTh: 1-2 encouraging, specific sentences in natural Thai summarizing what sounded good and what to polish.
 5. tipsTh: 1-3 short bullet tips in Thai (e.g., pointing out a specific word's ending sound or a Chinese tone pair). Keep each tip under 18 words.`;
 
-      // STRICT 0-COST BYOK-ONLY: Never falls back to owner's paid server API key
+      // Uses BYOK key when active OR server key ONLY when paidWithCredits is explicitly true
       const aiRes = await generateContentWithByokFallback({
         contents: {
           parts: [
@@ -1515,11 +1531,12 @@ Listen carefully to the attached audio recording and return strict JSON:
             { text: promptText },
           ],
         },
-        useByokQuota: true,
-        strictByokOnly: true,
-        byokKey: cleanByok,
+        useByokQuota: wasByokRequest,
+        strictByokOnly: wasByokRequest,
+        byokKey: wasByokRequest ? reqByok : null,
         byokProfile: "flash_lite",
-        getServerClient: undefined,
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: reqPaidWithCredits ? getServerGeminiClient : undefined,
         config: {
           responseMimeType: "application/json",
           responseSchema: shadowingSchema,
@@ -1557,6 +1574,7 @@ Listen carefully to the attached audio recording and return strict JSON:
         pronunciationScore,
         feedbackTh,
         tipsTh,
+        usedByok: aiRes.usedByok,
         modelUsed: aiRes.modelUsed,
       });
     } catch (error: any) {
@@ -1567,15 +1585,1073 @@ Listen carefully to the attached audio recording and return strict JSON:
           error: error.message,
         });
       }
-      if (error instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(error)) {
+      if (wasByokRequest && (error instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(error))) {
         return res.status(429).json({
           byokQuotaExhausted: true,
-          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง (คุณยังกดฟังเสียงที่อัดเทียบต้นฉบับได้ทันที)",
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) คุณสามารถใช้ 1 เครดิตในแอปเพื่อตรวจเสียงต่อ หรือกดฟังเทียบต้นฉบับได้ฟรีทันที",
+        });
+      }
+      if (isQuotaOrRateLimitError(error)) {
+        return res.status(429).json({
+          error: "เซิร์ฟเวอร์ AI หนาแน่นชั่วคราว กรุณาลองใหม่อีกครั้งในอีกสักครู่ครับ",
         });
       }
       return res.status(500).json({
         error: "ไม่สามารถวิเคราะห์เสียงด้วย AI ได้ชั่วคราว แต่คุณยังกดฟังเสียงที่อัดเทียบต้นฉบับได้ปกติครับ",
       });
+    }
+  });
+
+  // =========================================================================
+  // SMART TRANSLATOR STUDIO — FREE BASIC PROXY (0 BAHT) + STRICT BYOK AI
+  // =========================================================================
+  const basicTranslateCache = new Map<string, {
+    translatedText: string;
+    reading?: string;
+    sourceReading?: string;
+    detectedSourceLang: "TH" | "EN" | "CN" | "JP" | "KR";
+    engine: "google_free" | "bing_free" | "simply_free" | "mymemory_free";
+    ts: number;
+  }>();
+
+  const TRANSLATOR_LANG_TO_GOOGLE: Record<string, string> = {
+    AUTO: "auto",
+    TH: "th",
+    EN: "en",
+    CN: "zh-CN",
+    JP: "ja",
+    KR: "ko",
+  };
+
+  const TRANSLATOR_LANG_TO_BING: Record<string, string> = {
+    AUTO: "auto-detect",
+    TH: "th",
+    EN: "en",
+    CN: "zh-Hans",
+    JP: "ja",
+    KR: "ko",
+  };
+
+  const TRANSLATOR_LANG_TO_ICIBA: Record<string, string> = {
+    TH: "th",
+    EN: "en",
+    CN: "zh-cn",
+    JP: "ja",
+    KR: "ko",
+  };
+
+  const TRANSLATOR_LANG_FULL_NAME: Record<"TH" | "EN" | "CN" | "JP" | "KR", string> = {
+    TH: "Thai (ภาษาไทย)",
+    EN: "English",
+    CN: "Mandarin Chinese (Simplified Chinese 简体中文)",
+    JP: "Japanese (日本語)",
+    KR: "Korean (한국어)",
+  };
+
+  const normalizeDetectedTranslatorLang = (raw?: string): "TH" | "EN" | "CN" | "JP" | "KR" => {
+    const code = String(raw || "").toLowerCase();
+    if (code.startsWith("th")) return "TH";
+    if (code.startsWith("zh") || code === "cn") return "CN";
+    if (code.startsWith("ja") || code === "jp") return "JP";
+    if (code.startsWith("ko") || code === "kr") return "KR";
+    return "EN";
+  };
+
+  const normalizeTargetTranslatorLang = (raw?: string): "TH" | "EN" | "CN" | "JP" | "KR" => {
+    if (raw === "TH" || raw === "EN" || raw === "CN" || raw === "JP" || raw === "KR") return raw;
+    return "TH";
+  };
+
+  const detectLangHeuristic = (text: string): "TH" | "EN" | "CN" | "JP" | "KR" => {
+    if (/[\u0E00-\u0E7F]/.test(text)) return "TH";
+    if (/[\u3040-\u30FF]/.test(text)) return "JP";
+    if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(text)) return "KR";
+    if (/[\u4E00-\u9FFF]/.test(text)) return "CN";
+    return "EN";
+  };
+
+  let googleBlockedUntil = 0;
+
+  interface BingSession {
+    ua: string;
+    cookies: string;
+    ig: string;
+    key: string;
+    token: string;
+    iid: string;
+    expiresAt: number;
+  }
+  let cachedBingSession: BingSession | null = null;
+  let bingSessionPromise: Promise<BingSession | null> | null = null;
+
+  const getBingTranslatorSession = async (forceRefresh = false): Promise<BingSession | null> => {
+    if (!forceRefresh && cachedBingSession && Date.now() < cachedBingSession.expiresAt) {
+      return cachedBingSession;
+    }
+    if (!forceRefresh && bingSessionPromise) {
+      return bingSessionPromise;
+    }
+    bingSessionPromise = (async () => {
+      try {
+        const ua =
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 7000);
+        const page = await fetch("https://www.bing.com/translator", {
+          headers: { "User-Agent": ua },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!page.ok) return null;
+
+        const setCookiesFn = (page.headers as any).getSetCookie;
+        const cookies =
+          typeof setCookiesFn === "function"
+            ? (setCookiesFn.call(page.headers) as string[])
+                .map((c) => c.split(";")[0])
+                .join("; ")
+            : "";
+        const html = await page.text();
+        const ig = html.match(/IG:"([^"]+)"/)?.[1];
+        const paramsMatch = html.match(/params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)",(\d+)\]/);
+        const iid = html.match(/data-iid="([^"]+)"/)?.[1] || "translator.5023";
+        if (!ig || !paramsMatch) return null;
+
+        const session: BingSession = {
+          ua,
+          cookies,
+          ig,
+          key: paramsMatch[1],
+          token: paramsMatch[2],
+          iid,
+          expiresAt: Date.now() + 8 * 60 * 1000,
+        };
+        cachedBingSession = session;
+        return session;
+      } catch (err: any) {
+        console.warn("[Bing Translator] Session fetch error:", err?.message || err);
+        return null;
+      } finally {
+        bingSessionPromise = null;
+      }
+    })();
+    return bingSessionPromise;
+  };
+
+  const splitTextChunks = (text: string, maxLen = 450): string[] => {
+    if (text.length <= maxLen) return [text];
+    const chunks: string[] = [];
+    let remaining = text;
+    while (remaining.length > maxLen) {
+      let splitAt = remaining.lastIndexOf("\n", maxLen);
+      if (splitAt < maxLen * 0.4) splitAt = remaining.lastIndexOf(". ", maxLen);
+      if (splitAt < maxLen * 0.4) splitAt = remaining.lastIndexOf(" ", maxLen);
+      if (splitAt < maxLen * 0.4) splitAt = maxLen;
+      chunks.push(remaining.slice(0, splitAt + 1).trim());
+      remaining = remaining.slice(splitAt + 1).trim();
+    }
+    if (remaining) chunks.push(remaining);
+    return chunks.filter(Boolean);
+  };
+
+  const translateViaBingChunk = async (
+    chunk: string,
+    fromLang: string,
+    toLang: string,
+    allowRetry = true
+  ): Promise<{
+    text: string;
+    reading?: string;
+    sourceReading?: string;
+    detectedLanguage?: string;
+  } | null> => {
+    const session = await getBingTranslatorSession(!allowRetry);
+    if (!session) return null;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 7000);
+      const res = await fetch(
+        `https://www.bing.com/ttranslatev3?isVertical=1&&IG=${encodeURIComponent(
+          session.ig
+        )}&IID=${encodeURIComponent(session.iid)}.1`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": session.ua,
+            Referer: "https://www.bing.com/translator",
+            Origin: "https://www.bing.com",
+            ...(session.cookies ? { Cookie: session.cookies } : {}),
+          },
+          body: new URLSearchParams({
+            fromLang,
+            text: chunk,
+            to: toLang,
+            token: session.token,
+            key: session.key,
+          }).toString(),
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        cachedBingSession = null;
+        if (allowRetry) return translateViaBingChunk(chunk, fromLang, toLang, false);
+        return null;
+      }
+
+      const data = await res.json();
+      if (!Array.isArray(data) || !data[0] || !Array.isArray(data[0].translations) || !data[0].translations[0]) {
+        cachedBingSession = null;
+        if (allowRetry) return translateViaBingChunk(chunk, fromLang, toLang, false);
+        return null;
+      }
+
+      const first = data[0];
+      const tr = first.translations[0];
+      const translated = typeof tr?.text === "string" ? tr.text.trim() : "";
+      if (!translated) return null;
+
+      const reading =
+        typeof tr?.transliteration?.text === "string" ? tr.transliteration.text.trim() : undefined;
+      const sourceReading =
+        typeof data[1]?.inputTransliteration === "string"
+          ? data[1].inputTransliteration.trim()
+          : typeof first?.inputTransliteration === "string"
+          ? first.inputTransliteration.trim()
+          : undefined;
+      const detectedLanguage =
+        typeof first?.detectedLanguage?.language === "string"
+          ? first.detectedLanguage.language
+          : undefined;
+
+      return { text: translated, reading, sourceReading, detectedLanguage };
+    } catch (err: any) {
+      cachedBingSession = null;
+      if (allowRetry) return translateViaBingChunk(chunk, fromLang, toLang, false);
+      console.warn("[Bing Translator] Request error:", err?.message || err);
+      return null;
+    }
+  };
+
+  app.post("/api/translate/basic", express.json({ limit: "256kb" }), async (req, res) => {
+    try {
+      const { text = "", sourceLang = "AUTO", targetLang = "EN" } = req.body || {};
+      const cleanText = String(text || "").trim();
+      if (!cleanText) {
+        return res.status(400).json({ error: "กรุณาพิมพ์ข้อความที่ต้องการแปล" });
+      }
+      if (cleanText.length > 2000) {
+        return res.status(400).json({ error: "ข้อความยาวเกิน 2,000 ตัวอักษร กรุณาแบ่งแปลทีละส่วน" });
+      }
+
+      const safeSource =
+        sourceLang === "AUTO" || sourceLang === "TH" || sourceLang === "EN" || sourceLang === "CN" || sourceLang === "JP" || sourceLang === "KR"
+          ? sourceLang
+          : "AUTO";
+      const safeTarget = normalizeTargetTranslatorLang(targetLang);
+
+      // Short-circuit identical source & target
+      if (safeSource !== "AUTO" && safeSource === safeTarget) {
+        return res.json({
+          translatedText: cleanText,
+          detectedSourceLang: safeSource,
+          engine: "bing_free",
+        });
+      }
+
+      const cacheKey = `${safeSource}:${safeTarget}:${cleanText}`;
+      const cached = basicTranslateCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < 1000 * 60 * 60 * 6) {
+        return res.json({
+          translatedText: cached.translatedText,
+          reading: cached.reading,
+          sourceReading: cached.sourceReading,
+          detectedSourceLang: cached.detectedSourceLang,
+          engine: cached.engine,
+        });
+      }
+
+      const sl = TRANSLATOR_LANG_TO_GOOGLE[safeSource] || "auto";
+      const tl = TRANSLATOR_LANG_TO_GOOGLE[safeTarget] || "en";
+
+      let translatedText = "";
+      let reading = "";
+      let sourceReading = "";
+      let detectedSourceLang: "TH" | "EN" | "CN" | "JP" | "KR" =
+        safeSource === "AUTO" ? detectLangHeuristic(cleanText) : safeSource;
+      let engine: "google_free" | "bing_free" | "simply_free" | "mymemory_free" = "bing_free";
+
+      // Engine 1: Keyless Google Translate web endpoint (auto-skipped during 10-min cooldown if rate-limited)
+      if (Date.now() > googleBlockedUntil) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 4500);
+          const bodyParams = new URLSearchParams({ q: cleanText });
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(
+            sl
+          )}&tl=${encodeURIComponent(tl)}&dt=t&dt=rm`;
+
+          const gRes = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+              "User-Agent": "Mozilla/5.0",
+            },
+            body: bodyParams.toString(),
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+
+          const ct = gRes.headers.get("content-type") || "";
+          if (gRes.ok && ct.includes("json")) {
+            const gData = await gRes.json();
+            if (Array.isArray(gData) && Array.isArray(gData[0])) {
+              const segs: string[] = [];
+              const readingSegs: string[] = [];
+              const srcReadingSegs: string[] = [];
+              for (const item of gData[0]) {
+                if (Array.isArray(item)) {
+                  if (typeof item[0] === "string" && item[0].length > 0) {
+                    segs.push(item[0]);
+                  }
+                  if (typeof item[2] === "string" && item[2].trim()) {
+                    readingSegs.push(item[2].trim());
+                  }
+                  if (typeof item[3] === "string" && item[3].trim()) {
+                    srcReadingSegs.push(item[3].trim());
+                  }
+                }
+              }
+              translatedText = segs.join("").trim();
+              reading = readingSegs.join(" ").trim();
+              sourceReading = srcReadingSegs.join(" ").trim();
+              engine = "google_free";
+              if (typeof gData[2] === "string" && gData[2]) {
+                detectedSourceLang = normalizeDetectedTranslatorLang(gData[2]);
+              }
+            }
+          } else {
+            googleBlockedUntil = Date.now() + 10 * 60 * 1000;
+          }
+        } catch (primaryErr: any) {
+          googleBlockedUntil = Date.now() + 5 * 60 * 1000;
+          console.warn("[/api/translate/basic] Google web fallback:", primaryErr?.message || primaryErr);
+        }
+      }
+
+      // Engine 2: Free Bing / Microsoft Neural Translator (0 Baht, includes transliteration + auto-detect)
+      if (!translatedText) {
+        try {
+          const bingFrom = TRANSLATOR_LANG_TO_BING[safeSource] || "auto-detect";
+          const bingTo = TRANSLATOR_LANG_TO_BING[safeTarget] || "th";
+          const chunks = splitTextChunks(cleanText, 850);
+          const translatedParts: string[] = [];
+          const readingParts: string[] = [];
+          const srcReadingParts: string[] = [];
+          for (const chunk of chunks) {
+            const part = await translateViaBingChunk(chunk, bingFrom, bingTo);
+            if (!part) {
+              translatedParts.length = 0;
+              break;
+            }
+            translatedParts.push(part.text);
+            if (part.reading) readingParts.push(part.reading);
+            if (part.sourceReading) srcReadingParts.push(part.sourceReading);
+            if (part.detectedLanguage && safeSource === "AUTO") {
+              detectedSourceLang = normalizeDetectedTranslatorLang(part.detectedLanguage);
+            }
+          }
+          if (translatedParts.length > 0) {
+            translatedText = translatedParts.join(safeTarget === "CN" || safeTarget === "JP" ? "" : " ").trim();
+            reading = readingParts.join(" ").trim();
+            sourceReading = srcReadingParts.join(" ").trim();
+            engine = "bing_free";
+          }
+        } catch (bingErr: any) {
+          console.warn("[/api/translate/basic] Bing fallback failed:", bingErr?.message || bingErr);
+        }
+      }
+
+      // Engine 3: SimplyTranslate (iciba engine, 0 Baht)
+      if (!translatedText) {
+        try {
+          const effectiveSource = safeSource === "AUTO" ? detectLangHeuristic(cleanText) : safeSource;
+          detectedSourceLang = effectiveSource;
+          if (effectiveSource === safeTarget) {
+            translatedText = cleanText;
+            engine = "simply_free";
+          } else {
+            const icibaFrom = TRANSLATOR_LANG_TO_ICIBA[effectiveSource] || "en";
+            const icibaTo = TRANSLATOR_LANG_TO_ICIBA[safeTarget] || "th";
+            const chunks = splitTextChunks(cleanText, 450);
+            const translatedParts: string[] = [];
+            for (const chunk of chunks) {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 7000);
+              const stRes = await fetch(
+                `https://simplytranslate.org/api/translate/?engine=iciba&from=${encodeURIComponent(
+                  icibaFrom
+                )}&to=${encodeURIComponent(icibaTo)}&text=${encodeURIComponent(chunk)}`,
+                { signal: controller.signal }
+              );
+              clearTimeout(timeout);
+              if (stRes.ok) {
+                const stData = await stRes.json();
+                const cand = stData?.translated_text;
+                if (typeof cand === "string" && cand.trim()) {
+                  translatedParts.push(cand.trim());
+                }
+              }
+            }
+            if (translatedParts.length > 0) {
+              translatedText = translatedParts.join(safeTarget === "CN" || safeTarget === "JP" ? "" : " ").trim();
+              engine = "simply_free";
+            }
+          }
+        } catch (stErr: any) {
+          console.warn("[/api/translate/basic] SimplyTranslate fallback failed:", stErr?.message || stErr);
+        }
+      }
+
+      // Engine 4: Free MyMemory API (0 Baht cost, chunked cleanly for up to 2,000 chars)
+      if (!translatedText) {
+        try {
+          const effectiveSource = safeSource === "AUTO" ? detectLangHeuristic(cleanText) : safeSource;
+          detectedSourceLang = effectiveSource;
+          if (effectiveSource === safeTarget) {
+            translatedText = cleanText;
+            engine = "mymemory_free";
+          } else {
+            const mmSl = TRANSLATOR_LANG_TO_GOOGLE[effectiveSource] || "en";
+            const chunks = splitTextChunks(cleanText, 450);
+            const translatedParts: string[] = [];
+            for (const chunk of chunks) {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 8000);
+              const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+                chunk
+              )}&langpair=${encodeURIComponent(`${mmSl}|${tl}`)}`;
+              const mmRes = await fetch(mmUrl, { signal: controller.signal });
+              clearTimeout(timeout);
+              if (mmRes.ok) {
+                const mmData = await mmRes.json();
+                const candidate = mmData?.responseData?.translatedText;
+                if (
+                  typeof candidate === "string" &&
+                  candidate.trim() &&
+                  !candidate.toUpperCase().includes("MYMEMORY WARNING")
+                ) {
+                  translatedParts.push(candidate.trim());
+                }
+              }
+            }
+            if (translatedParts.length > 0) {
+              translatedText = translatedParts.join(safeTarget === "CN" || safeTarget === "JP" ? "" : " ").trim();
+              engine = "mymemory_free";
+            }
+          }
+        } catch (mmErr: any) {
+          console.warn("[/api/translate/basic] MyMemory fallback failed:", mmErr?.message || mmErr);
+        }
+      }
+
+      if (!translatedText) {
+        return res.status(503).json({
+          error: "บริการแปลพื้นฐานกำลังยุ่งชั่วคราว กรุณาลองกดแปลอีกครั้ง หรือสลับใช้โหมด AI เจาะลึก (BYOK)",
+        });
+      }
+
+      if (basicTranslateCache.size >= 500) {
+        const firstKey = basicTranslateCache.keys().next().value;
+        if (firstKey) basicTranslateCache.delete(firstKey);
+      }
+      basicTranslateCache.set(cacheKey, {
+        translatedText,
+        reading: reading || undefined,
+        sourceReading: sourceReading || undefined,
+        detectedSourceLang,
+        engine,
+        ts: Date.now(),
+      });
+
+      return res.json({
+        translatedText,
+        reading: reading || undefined,
+        sourceReading: sourceReading || undefined,
+        detectedSourceLang,
+        engine,
+      });
+    } catch (error: any) {
+      console.error("[/api/translate/basic] Error:", error?.message || error);
+      return res.status(500).json({ error: "เกิดข้อผิดพลาดระหว่างการแปลข้อความ กรุณาลองใหม่อีกครั้ง" });
+    }
+  });
+
+  app.post("/api/translate/ai", requireFirebaseAuth, express.json({ limit: "256kb" }), async (req, res) => {
+    const reqPaidWithCredits = Boolean(req.body?.paidWithCredits);
+    const reqByok = typeof req.body?.byokKey === "string" && req.body.byokKey.trim().length > 15 ? req.body.byokKey.trim() : null;
+    const wasByokRequest = Boolean(!reqPaidWithCredits && reqByok);
+    try {
+      const {
+        mode = "deep",
+        text = "",
+        sourceLang = "AUTO",
+        targetLang = "EN",
+        tone = "polite",
+        situation = "general",
+      } = req.body || {};
+
+      const cleanText = String(text || "").trim();
+      if (!cleanText) {
+        return res.status(400).json({ error: "กรุณาพิมพ์ข้อความที่ต้องการวิเคราะห์" });
+      }
+      if (cleanText.length > 2000) {
+        return res.status(400).json({ error: "ข้อความยาวเกิน 2,000 ตัวอักษร กรุณาย่อข้อความก่อนส่ง" });
+      }
+
+      if (!wasByokRequest && !reqPaidWithCredits) {
+        return res.status(400).json({
+          byokRequired: true,
+          error: "ต้องเชื่อมคีย์ฟรี BYOK (150 ครั้ง/วัน) หรือใช้ 1 เครดิตในแอปเพื่อใช้งานโหมด AI เจาะลึก (โหมดแปลพื้นฐานใช้ฟรีไม่อั้นได้ทันที)",
+        });
+      }
+
+      const safeTarget = normalizeTargetTranslatorLang(targetLang);
+      const safeTone =
+        tone === "polite" || tone === "formal" || tone === "casual" || tone === "chat"
+          ? tone
+          : "polite";
+
+      const toneGuideMap: Record<string, string> = {
+        polite: "Polite, courteous, warm, and universally appropriate (สุภาพ ใช้ได้ทุกสถานการณ์)",
+        formal: "Formal, professional, suitable for business emails, official requests, or respectful address (ทางการ)",
+        casual: "Friendly, relaxed everyday spoken style for friends and peers (เป็นกันเอง)",
+        chat: "Natural modern messaging/chat phrasing, concise and idiomatic like a real native speaker texting (แชทธรรมชาติ)",
+      };
+
+      if (mode === "polish") {
+        const situationMap: Record<string, string> = {
+          general: "General everyday communication",
+          work_email: "Workplace email or professional message",
+          friend_chat: "Casual chat with friends or social media",
+          travel_service: "Travel, restaurant ordering, hotel, or customer service",
+        };
+        const safeSituation = situationMap[String(situation)] || situationMap.general;
+
+        const polishSchema = {
+          type: Type.OBJECT,
+          properties: {
+            polishedText: { type: Type.STRING },
+            reading: { type: Type.STRING, description: "Pinyin with tone marks for CN, Romaji for JP, Revised Romanization for KR, IPA/stress tip for EN, empty for TH." },
+            thaiPhonetic: { type: Type.STRING, description: "Natural Thai phonetic pronunciation guide if language is EN/CN/JP/KR, empty if TH." },
+            meaningTh: { type: Type.STRING, description: "Natural Thai translation of the polished sentence." },
+            overallFeedbackTh: { type: Type.STRING, description: "1-2 encouraging sentences in Thai explaining why the polished version sounds more natural." },
+            changes: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  original: { type: Type.STRING },
+                  improved: { type: Type.STRING },
+                  reasonTh: { type: Type.STRING },
+                },
+                required: ["original", "improved", "reasonTh"],
+              },
+            },
+            alternatives: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  toneLabelTh: { type: Type.STRING },
+                  text: { type: Type.STRING },
+                  reading: { type: Type.STRING },
+                  nuanceTh: { type: Type.STRING },
+                },
+                required: ["toneLabelTh", "text", "nuanceTh"],
+              },
+            },
+          },
+          required: ["polishedText", "meaningTh", "overallFeedbackTh", "changes", "alternatives"],
+        };
+
+        const polishPrompt = `You are a native-level ${TRANSLATOR_LANG_FULL_NAME[safeTarget]} language editor coaching a Thai learner.
+Rewrite and polish the learner's text so it sounds completely natural like a native speaker in ${TRANSLATOR_LANG_FULL_NAME[safeTarget]}.
+
+Target Tone: ${toneGuideMap[safeTone]}
+Context/Situation: ${safeSituation}
+Learner's text:
+"""
+${cleanText}
+"""
+
+Return strict JSON:
+- polishedText: Natural, idiomatic rewrite in ${TRANSLATOR_LANG_FULL_NAME[safeTarget]}.
+- reading: Accurate Pinyin with tone marks (CN) / Romaji (JP) / Romanization (KR) / brief key pronunciation guide (EN) / empty string (TH).
+- thaiPhonetic: Readable Thai phonetic transcription (คำอ่านไทย) for EN/CN/JP/KR (empty if TH).
+- meaningTh: Clear, natural Thai meaning of the polished text.
+- overallFeedbackTh: Warm, concise 1-2 sentences in Thai explaining what improved.
+- changes: 1 to 4 concise before-and-after edits with short Thai explanations (if already near-perfect, include 1 subtle stylistic polish).
+- alternatives: Exactly 2 alternative natural phrasings (e.g., slightly more polite and slightly more casual) with Thai nuance notes.`;
+
+        const aiRes = await generateContentWithByokFallback({
+          contents: polishPrompt,
+          useByokQuota: wasByokRequest,
+          strictByokOnly: wasByokRequest,
+          byokKey: wasByokRequest ? reqByok : null,
+          byokProfile: "flash_lite",
+          serverDefaultModel: "gemini-3.8-flash",
+          getServerClient: reqPaidWithCredits ? getServerGeminiClient : undefined,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: polishSchema,
+          },
+        });
+
+        const parsed = safeParseGeminiJson<any>(aiRes.text || "{}", {});
+        return res.json({
+          polishedText: String(parsed.polishedText || cleanText).trim(),
+          reading: typeof parsed.reading === "string" ? parsed.reading.trim() : "",
+          thaiPhonetic: typeof parsed.thaiPhonetic === "string" ? parsed.thaiPhonetic.trim() : "",
+          meaningTh: String(parsed.meaningTh || "").trim(),
+          overallFeedbackTh: String(parsed.overallFeedbackTh || "เกลาประโยคให้เป็นธรรมชาติมากขึ้นแล้วครับ").trim(),
+          changes: Array.isArray(parsed.changes) ? parsed.changes.slice(0, 5) : [],
+          alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives.slice(0, 2) : [],
+          usedByok: aiRes.usedByok,
+          modelUsed: aiRes.modelUsed,
+        });
+      }
+
+      // Default mode === "deep": Deep Translate + Tone + Vocab Breakdown + Grammar + Alternatives
+      const safeSource =
+        sourceLang === "AUTO" || sourceLang === "TH" || sourceLang === "EN" || sourceLang === "CN" || sourceLang === "JP" || sourceLang === "KR"
+          ? sourceLang
+          : "AUTO";
+
+      const detectedHint = safeSource === "AUTO" ? detectLangHeuristic(cleanText) : safeSource;
+      const vocabLangTarget: "TH" | "EN" | "CN" | "JP" | "KR" =
+        safeTarget !== "TH" ? safeTarget : detectedHint !== "TH" ? detectedHint : "EN";
+
+      const deepSchema = {
+        type: Type.OBJECT,
+        properties: {
+          detectedSourceLang: { type: Type.STRING, enum: ["TH", "EN", "CN", "JP", "KR"] },
+          translatedText: { type: Type.STRING },
+          reading: {
+            type: Type.STRING,
+            description: "Pinyin with tone marks for CN, Romaji for JP, Romanization for KR, natural pronunciation/stress guide for EN, empty if TH.",
+          },
+          thaiPhonetic: {
+            type: Type.STRING,
+            description: "Clear Thai phonetic approximation (คำอ่านเทียบเสียงไทย) when target is EN/CN/JP/KR; empty if target is TH.",
+          },
+          toneNoteTh: {
+            type: Type.STRING,
+            description: "One short sentence in Thai explaining why this wording fits the chosen tone.",
+          },
+          breakdown: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                word: { type: Type.STRING },
+                reading: { type: Type.STRING },
+                meaningTh: { type: Type.STRING },
+                partOfSpeech: { type: Type.STRING },
+                noteTh: { type: Type.STRING },
+              },
+              required: ["word", "meaningTh"],
+            },
+          },
+          grammarNotes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                pattern: { type: Type.STRING },
+                explanationTh: { type: Type.STRING },
+                example: { type: Type.STRING },
+              },
+              required: ["pattern", "explanationTh"],
+            },
+          },
+          alternatives: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                toneLabelTh: { type: Type.STRING },
+                text: { type: Type.STRING },
+                reading: { type: Type.STRING },
+                nuanceTh: { type: Type.STRING },
+              },
+              required: ["toneLabelTh", "text", "nuanceTh"],
+            },
+          },
+        },
+        required: ["detectedSourceLang", "translatedText", "breakdown", "grammarNotes", "alternatives"],
+      };
+
+      const deepPrompt = `You are a master polyglot translator and language coach for Thai learners (deep specialty in Thai, English, Mandarin Chinese, plus Japanese and Korean).
+
+Source language: ${safeSource === "AUTO" ? "Auto-detect (one of TH, EN, CN, JP, KR)" : TRANSLATOR_LANG_FULL_NAME[safeSource]}
+Target language: ${TRANSLATOR_LANG_FULL_NAME[safeTarget]}
+Requested tone: ${toneGuideMap[safeTone]}
+
+Input text:
+"""
+${cleanText}
+"""
+
+Return strict JSON:
+1. detectedSourceLang: "TH" | "EN" | "CN" | "JP" | "KR".
+2. translatedText: Idiomatic, accurate translation in ${TRANSLATOR_LANG_FULL_NAME[safeTarget]} matching the requested tone.
+3. reading: For CN give full Pinyin with tone marks; for JP give Romaji (and hiragana reading in parentheses if helpful); for KR give Revised Romanization; for EN give brief pronunciation/stress guide for key phrase; for TH leave empty string.
+4. thaiPhonetic: Natural Thai phonetic reading (คำอ่านภาษาไทย) if target is EN/CN/JP/KR (especially helpful for CN/JP/KR learners); leave empty if target is TH.
+5. toneNoteTh: 1 concise Thai sentence describing the tone/register used.
+6. breakdown: Extract 3 to 7 most useful vocabulary words or expressions in ${TRANSLATOR_LANG_FULL_NAME[vocabLangTarget]} from the text/translation so the Thai learner can save them into their wordbook. Include word, reading (pinyin/romaji/phonetic), concise meaningTh, partOfSpeech (e.g. "กริยา", "คำนาม", "สำนวน"), and optional brief noteTh.
+7. grammarNotes: 1 to 3 concise grammar/structure patterns from the sentence with clear Thai explanations (under 25 words each) and a short example.
+8. alternatives: Exactly 2 natural alternative translations in ${TRANSLATOR_LANG_FULL_NAME[safeTarget]} with different tones/registers (e.g., อีกระดับความสุภาพหรือแบบใช้พูดจริง) plus short Thai nuance notes.`;
+
+      // Uses BYOK key when active OR server key ONLY when paidWithCredits is explicitly true
+      const aiRes = await generateContentWithByokFallback({
+        contents: deepPrompt,
+        useByokQuota: wasByokRequest,
+        strictByokOnly: wasByokRequest,
+        byokKey: wasByokRequest ? reqByok : null,
+        byokProfile: "flash_lite",
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: reqPaidWithCredits ? getServerGeminiClient : undefined,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: deepSchema,
+        },
+      });
+
+      const parsed = safeParseGeminiJson<any>(aiRes.text || "{}", {});
+      const detectedLang = normalizeDetectedTranslatorLang(parsed.detectedSourceLang || detectedHint);
+      const effectiveVocabLang: "TH" | "EN" | "CN" | "JP" | "KR" =
+        safeTarget !== "TH" ? safeTarget : detectedLang !== "TH" ? detectedLang : "EN";
+
+      const breakdown = Array.isArray(parsed.breakdown)
+        ? parsed.breakdown
+            .filter((b: any) => b && typeof b.word === "string" && b.word.trim())
+            .slice(0, 8)
+            .map((b: any) => ({
+              word: String(b.word).trim(),
+              reading: typeof b.reading === "string" ? b.reading.trim() : "",
+              meaningTh: String(b.meaningTh || "").trim(),
+              partOfSpeech: typeof b.partOfSpeech === "string" ? b.partOfSpeech.trim() : "",
+              noteTh: typeof b.noteTh === "string" ? b.noteTh.trim() : "",
+              wordLang: effectiveVocabLang,
+            }))
+        : [];
+
+      const grammarNotes = Array.isArray(parsed.grammarNotes)
+        ? parsed.grammarNotes
+            .filter((g: any) => g && typeof g.pattern === "string" && g.pattern.trim())
+            .slice(0, 3)
+            .map((g: any) => ({
+              pattern: String(g.pattern).trim(),
+              explanationTh: String(g.explanationTh || "").trim(),
+              example: typeof g.example === "string" ? g.example.trim() : "",
+            }))
+        : [];
+
+      const alternatives = Array.isArray(parsed.alternatives)
+        ? parsed.alternatives
+            .filter((a: any) => a && typeof a.text === "string" && a.text.trim())
+            .slice(0, 2)
+            .map((a: any) => ({
+              toneLabelTh: String(a.toneLabelTh || "ทางเลือก").trim(),
+              text: String(a.text).trim(),
+              reading: typeof a.reading === "string" ? a.reading.trim() : "",
+              nuanceTh: String(a.nuanceTh || "").trim(),
+            }))
+        : [];
+
+      return res.json({
+        detectedSourceLang: detectedLang,
+        translatedText: String(parsed.translatedText || "").trim(),
+        reading: typeof parsed.reading === "string" ? parsed.reading.trim() : "",
+        thaiPhonetic: typeof parsed.thaiPhonetic === "string" ? parsed.thaiPhonetic.trim() : "",
+        toneNoteTh: typeof parsed.toneNoteTh === "string" ? parsed.toneNoteTh.trim() : "",
+        breakdown,
+        grammarNotes,
+        alternatives,
+        usedByok: aiRes.usedByok,
+        modelUsed: aiRes.modelUsed,
+      });
+    } catch (error: any) {
+      console.error("[/api/translate/ai] Error:", error?.message || error);
+      if (error instanceof ByokInvalidKeyError) {
+        return res.status(401).json({ byokInvalidKey: true, error: error.message });
+      }
+      if (wasByokRequest && (error instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(error))) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) คุณสามารถใช้ 1 เครดิตในแอปทำต่อ หรือสลับใช้โหมดแปลพื้นฐานฟรีไม่อั้น",
+        });
+      }
+      if (isQuotaOrRateLimitError(error)) {
+        return res.status(429).json({
+          error: "เซิร์ฟเวอร์ AI หนาแน่นชั่วคราว กรุณาลองใหม่อีกครั้งในอีกสักครู่ครับ",
+        });
+      }
+      return res.status(500).json({
+        error: "ไม่สามารถประมวลผลโหมด AI เจาะลึกได้ชั่วคราว กรุณาลองใหม่อีกครั้ง",
+      });
+    }
+  });
+
+  app.post("/api/translate/image", requireFirebaseAuth, express.json({ limit: "10mb" }), async (req, res) => {
+    const reqPaidWithCredits = Boolean(req.body?.paidWithCredits);
+    const reqByok = typeof req.body?.byokKey === "string" && req.body.byokKey.trim().length > 15 ? req.body.byokKey.trim() : null;
+    const wasByokRequest = Boolean(!reqPaidWithCredits && reqByok);
+    try {
+      const {
+        imageBase64,
+        mimeType = "image/jpeg",
+        targetLang = "TH",
+        imageContext = "general",
+      } = req.body || {};
+
+      if (!imageBase64 || typeof imageBase64 !== "string" || imageBase64.length < 100) {
+        return res.status(400).json({ error: "ไม่พบไฟล์รูปภาพ กรุณาเลือกรูปภาพหรือถ่ายรูปใหม่อีกครั้ง" });
+      }
+      if (imageBase64.length > 7 * 1024 * 1024) {
+        return res.status(400).json({ error: "ไฟล์รูปภาพมีขนาดใหญ่เกินไป กรุณาเลือกรูปภาพขนาดเล็กลง" });
+      }
+
+      if (!wasByokRequest && !reqPaidWithCredits) {
+        return res.status(400).json({
+          byokRequired: true,
+          error: "ต้องเชื่อมคีย์ฟรี BYOK (150 ครั้ง/วัน) หรือใช้ 1 เครดิตในแอปเพื่อใช้ฟีเจอร์แปลจากรูปภาพ",
+        });
+      }
+
+      const rawBaseMime = String(mimeType || "image/jpeg").split(";")[0].trim().toLowerCase();
+      const ALLOWED_IMAGE_MIMES: Record<string, string> = {
+        "image/jpeg": "image/jpeg",
+        "image/jpg": "image/jpeg",
+        "image/png": "image/png",
+        "image/webp": "image/webp",
+      };
+      const cleanMime = ALLOWED_IMAGE_MIMES[rawBaseMime];
+      if (!cleanMime) {
+        return res.status(400).json({ error: "รองรับเฉพาะไฟล์รูปภาพ JPG, PNG หรือ WebP เท่านั้น" });
+      }
+
+      const safeTarget = normalizeTargetTranslatorLang(targetLang);
+      const contextInstructions: Record<string, string> = {
+        general: "Extract and translate all visible readable text cleanly.",
+        menu: "This is a restaurant menu or food label. List each dish/item clearly with price if shown, translate dish names naturally, and mention key ingredients or spiciness in noteTh/culturalNoteTh.",
+        sign: "This is a street sign, notice, or instruction board. Clearly highlight rules, warnings, directions, or opening hours.",
+        document: "This is a document, receipt, or chat screenshot. Preserve logical paragraph/line flow cleanly.",
+      };
+      const ctxGuide = contextInstructions[String(imageContext)] || contextInstructions.general;
+
+      const imageSchema = {
+        type: Type.OBJECT,
+        properties: {
+          detectedSourceLang: { type: Type.STRING, enum: ["TH", "EN", "CN", "JP", "KR"] },
+          extractedText: { type: Type.STRING, description: "All visible text extracted from the image." },
+          translatedSummary: { type: Type.STRING, description: "Clean full translation in the requested target language." },
+          culturalNoteTh: { type: Type.STRING, description: "Helpful practical/cultural tip in Thai (e.g. menu ingredients, sign meaning, etiquette)." },
+          items: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                original: { type: Type.STRING },
+                reading: { type: Type.STRING },
+                translated: { type: Type.STRING },
+                noteTh: { type: Type.STRING },
+              },
+              required: ["original", "translated"],
+            },
+          },
+          keyVocab: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                word: { type: Type.STRING },
+                reading: { type: Type.STRING },
+                meaningTh: { type: Type.STRING },
+                partOfSpeech: { type: Type.STRING },
+              },
+              required: ["word", "meaningTh"],
+            },
+          },
+        },
+        required: ["detectedSourceLang", "extractedText", "translatedSummary", "items", "keyVocab"],
+      };
+
+      const promptText = `You are a precise multilingual OCR translator helping a Thai user understand photos of signs, menus, labels, and documents.
+Target translation language: ${TRANSLATOR_LANG_FULL_NAME[safeTarget]}
+Image context: ${ctxGuide}
+
+Inspect the attached image carefully and return strict JSON:
+1. detectedSourceLang: Primary language visible in the image ("TH" | "EN" | "CN" | "JP" | "KR").
+2. extractedText: Clean transcription of the visible text (if no text is visible, write an empty string).
+3. translatedSummary: Complete, natural translation into ${TRANSLATOR_LANG_FULL_NAME[safeTarget]}.
+4. culturalNoteTh: 1-2 short, practical sentences in Thai adding helpful context (e.g., dish ingredients, warning details, or usage tip).
+5. items: Up to 12 distinct lines/menu dishes/sections with original text, pronunciation reading (Pinyin for CN, Romaji for JP, Romanization for KR), translation in ${TRANSLATOR_LANG_FULL_NAME[safeTarget]}, and optional brief noteTh.
+6. keyVocab: Up to 6 useful vocabulary words found in the image (in the image's foreign language) with reading and concise Thai meaning so the learner can save them.`;
+
+      const aiRes = await generateContentWithByokFallback({
+        contents: {
+          parts: [
+            { inlineData: { mimeType: cleanMime, data: imageBase64 } },
+            { text: promptText },
+          ],
+        },
+        useByokQuota: wasByokRequest,
+        strictByokOnly: wasByokRequest,
+        byokKey: wasByokRequest ? reqByok : null,
+        byokProfile: "flash_lite",
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: reqPaidWithCredits ? getServerGeminiClient : undefined,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: imageSchema,
+        },
+      });
+
+      const parsed = safeParseGeminiJson<any>(aiRes.text || "{}", {});
+      const detectedLang = normalizeDetectedTranslatorLang(parsed.detectedSourceLang);
+      const vocabLang: "TH" | "EN" | "CN" | "JP" | "KR" =
+        detectedLang !== "TH" ? detectedLang : safeTarget !== "TH" ? safeTarget : "EN";
+
+      return res.json({
+        detectedSourceLang: detectedLang,
+        extractedText: String(parsed.extractedText || "").trim(),
+        translatedSummary: String(parsed.translatedSummary || "").trim(),
+        culturalNoteTh: typeof parsed.culturalNoteTh === "string" ? parsed.culturalNoteTh.trim() : "",
+        items: Array.isArray(parsed.items) ? parsed.items.slice(0, 12) : [],
+        keyVocab: Array.isArray(parsed.keyVocab)
+          ? parsed.keyVocab
+              .filter((v: any) => v && typeof v.word === "string" && v.word.trim())
+              .slice(0, 6)
+              .map((v: any) => ({
+                word: String(v.word).trim(),
+                reading: typeof v.reading === "string" ? v.reading.trim() : "",
+                meaningTh: String(v.meaningTh || "").trim(),
+                partOfSpeech: typeof v.partOfSpeech === "string" ? v.partOfSpeech.trim() : "",
+                wordLang: vocabLang,
+              }))
+          : [],
+        usedByok: aiRes.usedByok,
+        modelUsed: aiRes.modelUsed,
+      });
+    } catch (error: any) {
+      console.error("[/api/translate/image] Error:", error?.message || error);
+      if (error instanceof ByokInvalidKeyError) {
+        return res.status(401).json({ byokInvalidKey: true, error: error.message });
+      }
+      if (wasByokRequest && (error instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(error))) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) คุณสามารถใช้ 1 เครดิตในแอปเพื่อแปลรูปต่อได้ทันที",
+        });
+      }
+      if (isQuotaOrRateLimitError(error)) {
+        return res.status(429).json({
+          error: "เซิร์ฟเวอร์ AI หนาแน่นชั่วคราว กรุณาลองใหม่อีกครั้งในอีกสักครู่ครับ",
+        });
+      }
+      return res.status(500).json({ error: "ไม่สามารถอ่านข้อความจากรูปภาพได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
+    }
+  });
+
+  app.post("/api/translate/transcribe", requireFirebaseAuth, express.json({ limit: "6mb" }), async (req, res) => {
+    const reqPaidWithCredits = Boolean(req.body?.paidWithCredits);
+    const reqByok = typeof req.body?.byokKey === "string" && req.body.byokKey.trim().length > 15 ? req.body.byokKey.trim() : null;
+    const wasByokRequest = Boolean(!reqPaidWithCredits && reqByok);
+    try {
+      const { audioBase64, mimeType = "audio/webm", lang = "TH" } = req.body || {};
+      if (!audioBase64 || typeof audioBase64 !== "string" || audioBase64.length < 100) {
+        return res.status(400).json({ error: "ไม่พบเสียงพูดที่บันทึกไว้ กรุณาลองพูดใหม่อีกครั้ง" });
+      }
+      if (audioBase64.length > 5 * 1024 * 1024) {
+        return res.status(400).json({ error: "ไฟล์เสียงยาวเกินไป กรุณาพูดให้กระชับขึ้น" });
+      }
+      if (!wasByokRequest && !reqPaidWithCredits) {
+        return res.status(400).json({
+          byokRequired: true,
+          error: "เบราว์เซอร์นี้ไม่รองรับการพิมพ์ด้วยเสียงอัตโนมัติ กรุณาเชื่อมคีย์ฟรี BYOK หรือใช้ 1 เครดิตเพื่อใช้ระบบถอดเสียง AI สำรอง",
+        });
+      }
+
+      const safeLang = normalizeTargetTranslatorLang(lang);
+      const rawBaseMime = String(mimeType || "audio/webm").split(";")[0].trim().toLowerCase();
+      const ALLOWED_AUDIO_MIMES: Record<string, string> = {
+        "audio/webm": "audio/webm",
+        "audio/mp4": "audio/mp4",
+        "audio/m4a": "audio/mp4",
+        "audio/x-m4a": "audio/mp4",
+        "audio/ogg": "audio/ogg",
+        "audio/wav": "audio/wav",
+        "audio/mpeg": "audio/mpeg",
+        "audio/aac": "audio/aac",
+      };
+      const cleanMime = ALLOWED_AUDIO_MIMES[rawBaseMime] || "audio/webm";
+
+      const transcribeSchema = {
+        type: Type.OBJECT,
+        properties: {
+          transcript: { type: Type.STRING },
+        },
+        required: ["transcript"],
+      };
+
+      const aiRes = await generateContentWithByokFallback({
+        contents: {
+          parts: [
+            { inlineData: { mimeType: cleanMime, data: audioBase64 } },
+            {
+              text: `Transcribe literally what the speaker said in ${TRANSLATOR_LANG_FULL_NAME[safeLang]}. Return only the spoken text in JSON field "transcript". If silent or unintelligible, return an empty string.`,
+            },
+          ],
+        },
+        useByokQuota: wasByokRequest,
+        strictByokOnly: wasByokRequest,
+        byokKey: wasByokRequest ? reqByok : null,
+        byokProfile: "flash_lite",
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: reqPaidWithCredits ? getServerGeminiClient : undefined,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: transcribeSchema,
+        },
+      });
+
+      const parsed = safeParseGeminiJson<{ transcript?: string }>(aiRes.text || "{}", { transcript: "" });
+      return res.json({
+        transcript: typeof parsed.transcript === "string" ? parsed.transcript.trim() : "",
+        usedByok: aiRes.usedByok,
+        modelUsed: aiRes.modelUsed,
+      });
+    } catch (error: any) {
+      console.error("[/api/translate/transcribe] Error:", error?.message || error);
+      if (error instanceof ByokInvalidKeyError) {
+        return res.status(401).json({ byokInvalidKey: true, error: error.message });
+      }
+      if (wasByokRequest && (error instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(error))) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) คุณสามารถใช้ 1 เครดิตในแอปเพื่อถอดเสียงต่อได้ทันที",
+        });
+      }
+      if (isQuotaOrRateLimitError(error)) {
+        return res.status(429).json({
+          error: "เซิร์ฟเวอร์ AI หนาแน่นชั่วคราว กรุณาลองใหม่อีกครั้งในอีกสักครู่ครับ",
+        });
+      }
+      return res.status(500).json({ error: "ไม่สามารถถอดเสียงได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
     }
   });
 

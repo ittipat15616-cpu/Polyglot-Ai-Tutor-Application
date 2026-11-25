@@ -1,6 +1,6 @@
 export type WordbookLang = 'EN' | 'CN';
 
-export type WordbookSource = 'lessons' | 'flashcards' | 'karaoke' | 'reading' | 'manual';
+export type WordbookSource = 'lessons' | 'flashcards' | 'karaoke' | 'reading' | 'translator' | 'manual';
 
 export type SrsRating = 'again' | 'hard' | 'good';
 

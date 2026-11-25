@@ -1024,18 +1024,23 @@ ${JSON.stringify(uniqueLines)}`;
   });
 
   // 6. Tap-to-Explain a word/phrase inside a lyric line
-  // STRICTLY BYOK-ONLY (0 Baht owner server cost guaranteed — NEVER falls back to server key!)
+  // Uses BYOK key (free 100/day) OR explicit credit-paid fallback (1 credit) — never leaks server key on free/BYOK calls
   app.post("/api/karaoke/explain-word", requireFirebaseAuth, async (req, res) => {
+    const reqPaidWithCredits = Boolean(req.body?.paidWithCredits);
+    const reqByok = typeof req.body?.byokKey === "string" ? req.body.byokKey.trim() : "";
+    const wasByokRequest = Boolean(!reqPaidWithCredits && reqByok.length > 15);
     try {
-      const { word, lineText, language, byokKey } = req.body || {};
+      const { word, lineText, language } = req.body || {};
       const cleanWord = String(word || "").trim().slice(0, 120);
       if (!cleanWord) return res.status(400).json({ error: "Missing word" });
 
-      const cleanByok = typeof byokKey === "string" ? byokKey.trim() : "";
-      if (cleanByok.length <= 15) {
+      const shouldUseByok = wasByokRequest;
+      const canUseServerKey = reqPaidWithCredits;
+      if (!shouldUseByok && !canUseServerKey) {
         return res.status(403).json({
           byokRequired: true,
-          error: "ต้องเชื่อมคีย์ฟรี BYOK ก่อนใช้ AI อธิบายคำนอกพจนานุกรม (คำในคลังศัพท์และพจนานุกรมในแอปยังดูได้ฟรีตลอด)",
+          error:
+            "ต้องเชื่อมคีย์ฟรี BYOK (100 คำ/วัน) หรือใช้ 1 เครดิตในแอปเพื่อใช้ AI อธิบายคำนอกพจนานุกรม (คำในคลังศัพท์และพจนานุกรมในแอปยังดูได้ฟรีตลอด)",
         });
       }
 
@@ -1072,10 +1077,12 @@ Rules:
 
       const aiRes = await generateContentWithByokFallback({
         contents: prompt,
-        useByokQuota: true,
-        strictByokOnly: true,
-        byokKey: cleanByok,
+        useByokQuota: shouldUseByok,
+        strictByokOnly: shouldUseByok,
+        byokKey: shouldUseByok ? reqByok : null,
         byokProfile: "flash_lite",
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: canUseServerKey ? getServerGeminiClient : undefined,
         config: {
           responseMimeType: "application/json",
           responseSchema: explainSchema,
@@ -1089,6 +1096,7 @@ Rules:
         meaningTh: String(parsed?.meaningTh || "ไม่พบคำแปล"),
         contextExplanationTh: String(parsed?.contextExplanationTh || ""),
         example: parsed?.example ? String(parsed.example) : "",
+        usedByok: aiRes.usedByok,
         modelUsed: aiRes.modelUsed,
       });
     } catch (err: any) {
@@ -1098,10 +1106,15 @@ Rules:
           error: err.message,
         });
       }
-      if (err instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(err)) {
+      if (wasByokRequest && (err instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(err))) {
         return res.status(429).json({
           byokQuotaExhausted: true,
-          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) กรุณารอสักครู่แล้วลองแตะใหม่อีกครั้ง",
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) คุณสามารถรอสักครู่หรือใช้ 1 เครดิตในแอปเพื่อดูคำอธิบายต่อได้ทันที",
+        });
+      }
+      if (isQuotaOrRateLimitError(err)) {
+        return res.status(429).json({
+          error: "เซิร์ฟเวอร์ AI หนาแน่นชั่วคราว กรุณาลองแตะใหม่อีกครั้งในอีกสักครู่ครับ",
         });
       }
       console.error("[Karaoke Explain-Word] Error:", err?.message || err);

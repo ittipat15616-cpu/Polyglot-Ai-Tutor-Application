@@ -16,7 +16,8 @@ export type ByokQuotaFeature =
   | 'reading_analyze'
   | 'roleplay_custom'
   | 'roleplay_report'
-  | 'shadowing_analyze';
+  | 'shadowing_analyze'
+  | 'translate_ai';
 
 export const BYOK_DAILY_LIMITS: Record<ByokQuotaFeature, number> = {
   vocab_exam: 10,
@@ -28,6 +29,7 @@ export const BYOK_DAILY_LIMITS: Record<ByokQuotaFeature, number> = {
   roleplay_custom: 30,
   roleplay_report: 100,
   shadowing_analyze: 100,
+  translate_ai: 150,
 };
 
 /** Max video length for BYOK free AI subtitles (5 minutes = 300s, ~12.8MB WAV base64, well below Gemini's 20MB inlineData limit) */
@@ -46,6 +48,7 @@ export interface ByokDailyUsage {
   roleplay_custom: number;
   roleplay_report: number;
   shadowing_analyze: number;
+  translate_ai: number;
   updatedAt: number;
 }
 
@@ -117,6 +120,7 @@ function createEmptyUsage(periodKey: string): ByokDailyUsage {
     roleplay_custom: 0,
     roleplay_report: 0,
     shadowing_analyze: 0,
+    translate_ai: 0,
     updatedAt: Date.now(),
   };
 }
@@ -148,6 +152,7 @@ export function getByokDailyUsage(uid?: string): ByokDailyUsage {
       roleplay_custom: Math.max(0, Number(parsed.roleplay_custom) || 0),
       roleplay_report: Math.max(0, Number(parsed.roleplay_report) || 0),
       shadowing_analyze: Math.max(0, Number(parsed.shadowing_analyze) || 0),
+      translate_ai: Math.max(0, Number(parsed.translate_ai) || 0),
       updatedAt: Number(parsed.updatedAt) || Date.now(),
     };
   } catch {
@@ -194,6 +199,7 @@ export async function syncByokDailyUsageWithFirestore(userId?: string): Promise<
           roleplay_custom: Math.max(localUsage.roleplay_custom, Number(data.roleplay_custom) || 0),
           roleplay_report: Math.max(localUsage.roleplay_report, Number(data.roleplay_report) || 0),
           shadowing_analyze: Math.max(localUsage.shadowing_analyze, Number(data.shadowing_analyze) || 0),
+          translate_ai: Math.max(localUsage.translate_ai, Number(data.translate_ai) || 0),
           updatedAt: Date.now(),
         };
         saveLocalUsage(merged, uid);
@@ -268,6 +274,7 @@ export async function consumeByokFreeQuota(feature: ByokQuotaFeature): Promise<B
     roleplay_custom: Math.max(baseline.roleplay_custom || 0, localLatest.roleplay_custom || 0),
     roleplay_report: Math.max(baseline.roleplay_report || 0, localLatest.roleplay_report || 0),
     shadowing_analyze: Math.max(baseline.shadowing_analyze || 0, localLatest.shadowing_analyze || 0),
+    translate_ai: Math.max(baseline.translate_ai || 0, localLatest.translate_ai || 0),
     [feature]: Math.min(BYOK_DAILY_LIMITS[feature], currentUsed + 1),
     updatedAt: Date.now(),
   };
@@ -528,6 +535,6 @@ export function getByokCallRates(_tier?: SubscriptionTier): ByokRates {
     videoCallSecondsPerCredit: 0,
     isCallUnlimited: true,
     docUploadCreditCost: 0,
-    label: 'คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 • ฝึกพูดตามประโยค AI 100 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • บทความส่วนตัว 3 • สร้างด่าน Roleplay 30 • สรุปคะแนน Roleplay 100 • ใส่ซับ AI 1 คลิป/วัน'
+    label: 'คอล AI ฟรีไม่อั้น + แปลภาษา AI เจาะลึก 150 • สอบศัพท์ 10 • ฝึกพูดตามประโยค AI 100 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • บทความส่วนตัว 3 • สร้างด่าน Roleplay 30 • สรุปคะแนน Roleplay 100 • ใส่ซับ AI 1 คลิป/วัน'
   };
 }

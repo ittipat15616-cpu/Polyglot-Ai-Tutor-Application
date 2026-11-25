@@ -28,7 +28,8 @@ import {
   Captions,
   Lock,
   LogIn,
-  BookOpen
+  BookOpen,
+  Languages
 } from 'lucide-react';
 import { 
   getStoredByokKey, 
@@ -253,7 +254,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-indigo-200/80 mt-0.5">
-                  คอล AI ไม่อั้น + สอบศัพท์ 10 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • Roleplay สร้างด่าน 30 / สรุปคะแนน 100 • ใส่ซับ AI 1 คลิป/วัน
+                  คอล AI ไม่อั้น + โควตาฟรี BYOK รายวัน (สอบศัพท์ {BYOK_DAILY_LIMITS.vocab_exam} • ตรวจข้อสอบ {BYOK_DAILY_LIMITS.mock_test} • แปลเพลง {BYOK_DAILY_LIMITS.karaoke_translate} • อธิบายคำเพลง {BYOK_DAILY_LIMITS.karaoke_explain} • ตรวจเสียงพูด {BYOK_DAILY_LIMITS.shadowing_analyze} • แปล AI {BYOK_DAILY_LIMITS.translate_ai} • Roleplay สรุป AI {BYOK_DAILY_LIMITS.roleplay_report}/วัน) หรือใช้เครดิตทำต่อได้ทันที
                 </p>
               </div>
             </div>
@@ -684,7 +685,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
               <div className="space-y-0.5">
                 <div className="font-bold text-amber-900">ทำครั้งเดียวใช้ได้ตลอดไป คุ้มสุดทุกแพ็กเกจ:</div>
                 <div className="text-slate-600 leading-relaxed">
-                  API Key นี้จะผูกกับบัญชีของคุณตลอดไป ใช้คอลเสียง & วิดีโอคอล AI และสรุปความจำหลังคอลติวเตอร์ <strong>ฟรีไม่อั้น</strong> พร้อมโควตาฟรีประจำวันสำหรับ <strong>สอบศัพท์ ({BYOK_DAILY_LIMITS.vocab_exam} ครั้ง/วัน)</strong>, <strong>วิเคราะห์เสียงฝึกพูดตามประโยค ({BYOK_DAILY_LIMITS.shadowing_analyze} ครั้ง/วัน)</strong>, <strong>ตรวจข้อสอบ AI ({BYOK_DAILY_LIMITS.mock_test} ครั้ง/วัน · Reading/Listening ฟรีไม่จำกัด)</strong>, <strong>แปลเพลงใหม่คาราโอเกะ ({BYOK_DAILY_LIMITS.karaoke_translate} เพลง/วัน)</strong>, <strong>อธิบายคำศัพท์ในเพลงด้วย AI ({BYOK_DAILY_LIMITS.karaoke_explain} คำ/วัน)</strong>, <strong>วิเคราะห์บทความส่วนตัว ({BYOK_DAILY_LIMITS.reading_analyze} บทความ/วัน)</strong>, <strong>Roleplay สร้างด่านเอง ({BYOK_DAILY_LIMITS.roleplay_custom} ด่าน/วัน) & สรุปคะแนน AI ({BYOK_DAILY_LIMITS.roleplay_report} ครั้ง/วัน)</strong> และ <strong>ใส่ซับวิดีโอ AI ({BYOK_DAILY_LIMITS.video_subtitle} คลิป/วัน ≤5 นาที)</strong>
+                  API Key นี้จะผูกกับบัญชีของคุณตลอดไป ใช้คอลเสียง & วิดีโอคอล AI และสรุปความจำหลังคอลติวเตอร์ <strong>ฟรีไม่อั้น</strong> พร้อมโควตาฟรีประจำวันสำหรับ <strong>แปลภาษา AI เจาะลึก ({BYOK_DAILY_LIMITS.translate_ai} ครั้ง/วัน · แปลพื้นฐานฟรีไม่อั้น)</strong>, <strong>สอบศัพท์ ({BYOK_DAILY_LIMITS.vocab_exam} ครั้ง/วัน)</strong>, <strong>วิเคราะห์เสียงฝึกพูดตามประโยค ({BYOK_DAILY_LIMITS.shadowing_analyze} ครั้ง/วัน)</strong>, <strong>ตรวจข้อสอบ AI ({BYOK_DAILY_LIMITS.mock_test} ครั้ง/วัน · Reading/Listening ฟรีไม่จำกัด)</strong>, <strong>แปลเพลงใหม่คาราโอเกะ ({BYOK_DAILY_LIMITS.karaoke_translate} เพลง/วัน)</strong>, <strong>อธิบายคำศัพท์ในเพลงด้วย AI ({BYOK_DAILY_LIMITS.karaoke_explain} คำ/วัน)</strong>, <strong>วิเคราะห์บทความส่วนตัว ({BYOK_DAILY_LIMITS.reading_analyze} บทความ/วัน)</strong>, <strong>Roleplay สร้างด่านเอง ({BYOK_DAILY_LIMITS.roleplay_custom} ด่าน/วัน) & สรุปคะแนน AI ({BYOK_DAILY_LIMITS.roleplay_report} ครั้ง/วัน)</strong> และ <strong>ใส่ซับวิดีโอ AI ({BYOK_DAILY_LIMITS.video_subtitle} คลิป/วัน ≤5 นาที)</strong>
                 </div>
               </div>
             </div>
@@ -825,7 +826,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                       </span>
                     </div>
                     <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.karaoke_explain} คำ / วัน</div>
-                    <div className="text-[11px] text-slate-500">แตะคำนอกพจนานุกรมในคาราโอเกะ (คำในพจนานุกรมแอปฟรีไม่อั้น)</div>
+                    <div className="text-[11px] text-slate-500">พจนานุกรมในระบบฟรีไม่อั้น · AI เจาะลึกครบสิทธิ์หรือไม่มีคีย์ใช้ 1 เครดิต/ครั้ง</div>
                   </div>
 
                   <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
@@ -843,14 +844,14 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                     <div className="text-sm font-black text-emerald-700">
                       สร้างด่าน {BYOK_DAILY_LIMITS.roleplay_custom} • สรุปคะแนน {BYOK_DAILY_LIMITS.roleplay_report} / วัน
                     </div>
-                    <div className="text-[11px] text-slate-500">คอล Roleplay & สรุปความจำหลังคอลติวเตอร์ฟรีไม่อั้น</div>
+                    <div className="text-[11px] text-slate-500">สรุปผลตามภารกิจฟรีไม่อั้น · สรุปวิเคราะห์ AI ครบสิทธิ์หรือไม่มีคีย์ใช้ 1 เครดิต/ครั้ง</div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1 sm:col-span-2">
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
                     <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5 text-cyan-700 font-bold text-xs">
                         <Sparkles size={14} className="shrink-0" />
-                        <span>วิเคราะห์เสียงฝึกพูดตามประโยคในคลังศัพท์ (Shadowing AI)</span>
+                        <span>วิเคราะห์เสียงฝึกพูดตามประโยค (Shadowing AI)</span>
                       </div>
                       <span className="text-[10px] font-bold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-md">
                         {isSignedIn
@@ -859,7 +860,23 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                       </span>
                     </div>
                     <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.shadowing_analyze} ครั้ง / วัน</div>
-                    <div className="text-[11px] text-slate-500">AI ฟังเสียงพูดจริง ตรวจคำต่อคำและแนะนำการออกเสียง/วรรณยุกต์ (อัดฟังเทียบต้นฉบับฟรีไม่อั้นทุกคน)</div>
+                    <div className="text-[11px] text-slate-500">อัดเสียงฟังเทียบเองฟรีไม่อั้น · ตรวจเสียง AI ครบสิทธิ์หรือไม่มีคีย์ใช้ 1 เครดิต/ครั้ง</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-indigo-700 font-bold text-xs">
+                        <Languages size={14} className="shrink-0" />
+                        <span>แปลภาษา AI เจาะลึก (Smart Translator)</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.translate_ai - (dailyUsage.translate_ai || 0))}/${BYOK_DAILY_LIMITS.translate_ai} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.translate_ai} ครั้ง / วัน</div>
+                    <div className="text-[11px] text-slate-500">แปลพื้นฐานฟรีไม่อั้น · แปล AI/เกลาประโยค/แปลรูปภาพครบสิทธิ์หรือไม่มีคีย์ใช้ 1 เครดิต/ครั้ง</div>
                   </div>
                 </div>
 

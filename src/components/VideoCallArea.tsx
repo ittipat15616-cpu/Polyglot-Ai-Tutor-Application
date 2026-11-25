@@ -38,6 +38,7 @@ import { CustomMissionModal } from './roleplay/CustomMissionModal';
 import { RoleplayReportModal } from './roleplay/RoleplayReportModal';
 import { playObjectiveChime } from './roleplay/ttsHelper';
 import InsufficientCreditsModal from './InsufficientCreditsModal';
+import ByokQuotaFallbackModal, { QuotaFallbackReason } from './ByokQuotaFallbackModal';
 
 export type AvatarState = 
   | 'idle'
@@ -293,10 +294,26 @@ export default function VideoCallArea({
   const [isRequestingHint, setIsRequestingHint] = useState(false);
   const [isRequestingSlower, setIsRequestingSlower] = useState(false);
 
-  // Post-call Free Report Card state
+  // Post-call Report Card state (Free summary first + optional AI upgrade)
   const [reportMission, setReportMission] = useState<RoleplayMission | null>(null);
   const [reportData, setReportData] = useState<RoleplayReportData | null>(null);
+  const [reportFreeData, setReportFreeData] = useState<RoleplayReportData | null>(null);
+  const [reportAiData, setReportAiData] = useState<RoleplayReportData | null>(null);
+  const [reportSnapshot, setReportSnapshot] = useState<{
+    mission: RoleplayMission;
+    lang: 'EN' | 'CN';
+    transcript: Array<{ role: 'user' | 'model'; text: string }>;
+    completedObjectives: [boolean, boolean, boolean];
+    durationSeconds: number;
+  } | null>(null);
   const [isReportLoading, setIsReportLoading] = useState(false);
+  const [isReportAiUpgrading, setIsReportAiUpgrading] = useState(false);
+  const [reportAiError, setReportAiError] = useState<string | null>(null);
+  const [reportFallbackModal, setReportFallbackModal] = useState<{
+    isOpen: boolean;
+    reason: QuotaFallbackReason;
+  } | null>(null);
+  const [isReportCreditBusy, setIsReportCreditBusy] = useState(false);
   const [reportSavedToCloud, setReportSavedToCloud] = useState(false);
 
   // Refs for reading fresh values during call lifecycle / disconnect
@@ -560,18 +577,26 @@ export default function VideoCallArea({
     clearAskWord?.();
     clearAskPdfUrl?.();
 
-    // If ending a Roleplay mission call, generate the 100% FREE Post-Call Report Card & persist stars to Firebase
+    // If ending a Roleplay mission call, generate the instant 0-credit Free Summary first
+    // and let the user explicitly choose "ใช้ AI วิเคราะห์ลึก" (BYOK / 1 credit) if desired.
     if (rpConfig) {
       const mission = rpConfig.mission;
+      const cleanTranscript = snapshotTranscript.map((t) => ({ role: t.role, text: t.text }));
       setReportMission(mission);
       setReportData(null);
+      setReportFreeData(null);
+      setReportAiData(null);
+      setReportAiError(null);
+      setReportFallbackModal(null);
+      setReportSnapshot({
+        mission,
+        lang: roleplayLang,
+        transcript: cleanTranscript,
+        completedObjectives: snapshotObjectives,
+        durationSeconds: snapshotDuration,
+      });
       setIsReportLoading(true);
       setReportSavedToCloud(false);
-
-      const activeByokKey = getStoredByokKey();
-      const reportQuota = getByokQuotaStatus('roleplay_report');
-      const shouldUseByokReport = Boolean(activeByokKey && reportQuota.hasKey && reportQuota.canUseFree);
-      const isCreditPaidCall = !activeByokKey;
 
       (async () => {
         try {
@@ -581,18 +606,16 @@ export default function VideoCallArea({
             body: JSON.stringify({
               mission,
               lang: roleplayLang,
-              transcript: snapshotTranscript.map((t) => ({ role: t.role, text: t.text })),
+              transcript: cleanTranscript,
               completedObjectives: snapshotObjectives,
               durationSeconds: snapshotDuration,
-              useByokQuota: shouldUseByokReport,
-              byokKey: shouldUseByokReport ? activeByokKey : undefined,
-              paidCallWithCredits: isCreditPaidCall,
+              useByokQuota: false,
+              paidCallWithCredits: false,
+              paidWithCredits: false,
             }),
           });
           const data: RoleplayReportData = await resp.json();
-          if (shouldUseByokReport && data?.usedAiAnalysis) {
-            consumeByokFreeQuota('roleplay_report').catch(() => {});
-          }
+          setReportFreeData(data);
           setReportData(data);
 
           if (!mission.isCustom && data) {
@@ -613,11 +636,11 @@ export default function VideoCallArea({
             }
           }
         } catch (err) {
-          console.error('[Roleplay Report] Failed to fetch report:', err);
+          console.error('[Roleplay Report] Failed to fetch free report:', err);
           const objCount = snapshotObjectives.filter(Boolean).length;
-          const fallbackScore = objCount === 3 ? 85 : objCount === 2 ? 70 : objCount === 1 ? 55 : 0;
+          const fallbackScore = objCount === 3 ? 85 : objCount === 2 ? 70 : objCount === 1 ? 55 : 40;
           const stars = objCount === 3 ? 3 : objCount === 2 ? 2 : objCount === 1 ? 1 : 0;
-          setReportData({
+          const localFallback: RoleplayReportData = {
             missionId: mission.id,
             missionTitle: mission.titleTh,
             lang: roleplayLang,
@@ -632,15 +655,136 @@ export default function VideoCallArea({
               vocabulary: fallbackScore,
               naturalness: fallbackScore,
             },
-            summaryTh: 'จบภารกิจเรียบร้อยครับ สามารถกดเล่นซ้ำเพื่อเก็บ 3 ดาวเต็มหรือลองด่านถัดไปได้เลยครับ',
+            summaryTh:
+              'สรุปผลตามภารกิจเรียบร้อยครับ! คุณสามารถเลือก "ใช้ AI วิเคราะห์ลึก" เพื่อดูคำแนะนำละเอียดและประโยคอัพเกรดได้ทันทีครับ',
             improvements: [],
             keyVocab: [],
             usedAiAnalysis: false,
-          });
+          };
+          setReportFreeData(localFallback);
+          setReportData(localFallback);
         } finally {
           setIsReportLoading(false);
         }
       })();
+    }
+  };
+
+  const handleRequestAiRoleplayReport = async (paidWithCredits = false) => {
+    if (!reportSnapshot) return;
+    setReportAiError(null);
+
+    // If AI report was already generated for this call, toggle back to it for 0 cost
+    if (reportAiData) {
+      setReportData(reportAiData);
+      return;
+    }
+
+    if (!auth.currentUser) {
+      openLoginModal();
+      return;
+    }
+
+    // Check minimum speech before spending BYOK quota or 1 credit
+    const userTurns = reportSnapshot.transcript.filter((t) => t.role === 'user');
+    const userJoined = userTurns.map((t) => t.text).join(' ').trim();
+    const tokenCount =
+      reportSnapshot.lang === 'CN'
+        ? userJoined.replace(/\s+/g, '').length
+        : userJoined.split(/\s+/).filter(Boolean).length;
+    if (userTurns.length === 0 || tokenCount < 4) {
+      setReportAiError(
+        'รอบนี้ยังมีข้อความเสียงของคุณน้อยเกินไปสำหรับการวิเคราะห์ด้วย AI (ยังไม่ได้หักเครดิตหรือสิทธิ์รายวันครับ)'
+      );
+      return;
+    }
+
+    const activeByokKey = getStoredByokKey();
+    const reportQuota = getByokQuotaStatus('roleplay_report');
+
+    if (!paidWithCredits) {
+      if (!activeByokKey || !reportQuota.hasKey) {
+        setReportFallbackModal({ isOpen: true, reason: 'no_byok_credit_confirm' });
+        return;
+      }
+      if (!reportQuota.canUseFree) {
+        setReportFallbackModal({ isOpen: true, reason: 'byok_daily_exhausted' });
+        return;
+      }
+    } else {
+      const sub = await loadUserSubscription();
+      if (getTotalCredits(sub) < 1) {
+        setReportFallbackModal({ isOpen: true, reason: 'insufficient_credits' });
+        return;
+      }
+      setIsReportCreditBusy(true);
+    }
+
+    setIsReportAiUpgrading(true);
+    try {
+      const resp = await fetch('/api/roleplay-report', {
+        method: 'POST',
+        headers: await getFirebaseAuthHeaders(),
+        body: JSON.stringify({
+          mission: reportSnapshot.mission,
+          lang: reportSnapshot.lang,
+          transcript: reportSnapshot.transcript,
+          completedObjectives: reportSnapshot.completedObjectives,
+          durationSeconds: reportSnapshot.durationSeconds,
+          useByokQuota: !paidWithCredits,
+          byokKey: !paidWithCredits ? activeByokKey : undefined,
+          paidWithCredits,
+          paidCallWithCredits: paidWithCredits,
+        }),
+      });
+      const data: any = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data?.usedAiAnalysis) {
+        if (!paidWithCredits && data?.byokInvalidKey) {
+          setReportFallbackModal({ isOpen: true, reason: 'no_byok_credit_confirm' });
+          setReportAiError('คีย์ BYOK ไม่ถูกต้องหรือหมดอายุ สามารถใช้ 1 เครดิตทำต่อแทนได้ครับ');
+        } else if (!paidWithCredits && (data?.byokQuotaExhausted || resp.status === 429)) {
+          setReportFallbackModal({ isOpen: true, reason: 'byok_google_429' });
+        } else {
+          setReportAiError(
+            data?.error || 'ไม่สามารถวิเคราะห์บทสนทนาด้วย AI ได้ในขณะนี้ (ยังไม่ได้หักเครดิตหรือสิทธิ์ครับ)'
+          );
+        }
+        return;
+      }
+
+      if (paidWithCredits) {
+        await deductCredit(1);
+      } else {
+        await consumeByokFreeQuota('roleplay_report').catch(() => {});
+      }
+
+      setReportAiData(data);
+      setReportData(data);
+      setReportFallbackModal(null);
+
+      if (!reportSnapshot.mission.isCustom) {
+        const savedRecord = await saveRoleplayMissionProgress({
+          missionId: reportSnapshot.mission.id,
+          lang: reportSnapshot.lang,
+          stars: data.stars,
+          score: data.overallScore,
+          objectivesCompletedCount: data.completedObjectives.filter(Boolean).length,
+          isCustom: reportSnapshot.mission.isCustom,
+        });
+        if (savedRecord) {
+          setReportSavedToCloud(true);
+          setRoleplayProgressMap((prev) => ({
+            ...prev,
+            [reportSnapshot.mission.id]: savedRecord,
+          }));
+        }
+      }
+    } catch (err: any) {
+      setReportAiError(err?.message || 'เกิดข้อผิดพลาดในการวิเคราะห์ด้วย AI (ยังไม่ได้หักเครดิตหรือสิทธิ์ครับ)');
+    } finally {
+      setIsReportAiUpgrading(false);
+      setIsReportCreditBusy(false);
     }
   };
 
@@ -2625,30 +2769,66 @@ export default function VideoCallArea({
         />
       )}
 
-      {/* 100% Free Post-Call Roleplay Report Card Modal */}
+      {/* Post-Call Roleplay Report Card Modal (Free Summary + Optional AI Deep Report) */}
       {reportMission && (
         <RoleplayReportModal
           mission={reportMission}
           nextMission={getNextMission(reportMission)}
           report={reportData}
           isLoading={isReportLoading}
+          isAiUpgrading={isReportAiUpgrading}
+          hasByok={Boolean(getStoredByokKey())}
+          byokQuotaRemaining={getByokQuotaStatus('roleplay_report').remaining}
+          byokQuotaLimit={getByokQuotaStatus('roleplay_report').limit}
+          aiError={reportAiError}
           savedToCloud={reportSavedToCloud}
+          onSelectFreeSummary={() => {
+            setReportAiError(null);
+            if (reportFreeData) {
+              setReportData(reportFreeData);
+            }
+          }}
+          onRequestAiReport={() => void handleRequestAiRoleplayReport(false)}
           onRetry={() => {
             const target = reportMission;
             setReportMission(null);
             setReportData(null);
+            setReportFreeData(null);
+            setReportAiData(null);
+            setReportSnapshot(null);
             setBriefingMission(target);
           }}
           onNextMission={(next) => {
             setReportMission(null);
             setReportData(null);
+            setReportFreeData(null);
+            setReportAiData(null);
+            setReportSnapshot(null);
             setBriefingMission(next);
           }}
           onBackToLobby={() => {
             setReportMission(null);
             setReportData(null);
+            setReportFreeData(null);
+            setReportAiData(null);
+            setReportSnapshot(null);
             setCallMode('roleplay');
           }}
+        />
+      )}
+
+      {/* 1-Credit / BYOK Fallback Modal for Roleplay AI Report */}
+      {reportFallbackModal && (
+        <ByokQuotaFallbackModal
+          isOpen={reportFallbackModal.isOpen}
+          onClose={() => {
+            if (!isReportCreditBusy) setReportFallbackModal(null);
+          }}
+          feature="roleplay_report"
+          reason={reportFallbackModal.reason}
+          creditCost={1}
+          isBusy={isReportCreditBusy}
+          onUseCredits={() => void handleRequestAiRoleplayReport(true)}
         />
       )}
     </div>

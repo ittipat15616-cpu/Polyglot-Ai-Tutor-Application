@@ -47,6 +47,7 @@ type SourceFilter = 'all' | WordbookSource;
 const SOURCE_OPTIONS: Array<{ id: SourceFilter; label: string }> = [
   { id: 'all', label: 'ทุกแหล่งที่มา' },
   { id: 'lessons', label: 'คลังคำศัพท์' },
+  { id: 'translator', label: 'แปลภาษา' },
   { id: 'karaoke', label: 'คาราโอเกะ' },
   { id: 'flashcards', label: 'แฟลชการ์ด' },
   { id: 'manual', label: 'เพิ่มเอง' },
@@ -57,6 +58,7 @@ const SOURCE_LABEL_MAP: Record<WordbookSource, string> = {
   flashcards: 'แฟลชการ์ด',
   karaoke: 'คาราโอเกะ',
   reading: 'อ่านเรื่องสั้น',
+  translator: 'แปลภาษา',
   manual: 'เพิ่มเอง',
 };
 

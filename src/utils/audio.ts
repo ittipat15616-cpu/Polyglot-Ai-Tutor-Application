@@ -174,6 +174,69 @@ export const playTTS = async (
   return null;
 };
 
+export type TranslatorAudioLang = 'TH' | 'EN' | 'CN' | 'JP' | 'KR';
+
+export const playTranslatorTTS = async (
+  text: string,
+  lang: TranslatorAudioLang,
+  options?: { slow?: boolean; onEnd?: () => void }
+): Promise<HTMLAudioElement | null> => {
+  const slow = Boolean(options?.slow);
+  const onEnd = options?.onEnd;
+
+  stopThaiTTS();
+  const requestId = ++activeTtsRequestId;
+
+  const cleanText = text.trim();
+  if (!cleanText) {
+    if (onEnd) onEnd();
+    return null;
+  }
+
+  const rate = slow ? '-25%' : '+0%';
+  const cacheKey = `${lang}:${rate}:${cleanText}`;
+  if (clientAudioCache.has(cacheKey)) {
+    return playAudioData(clientAudioCache.get(cacheKey)!, requestId, onEnd, cleanText);
+  }
+
+  try {
+    const response = await fetch('/api/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: cleanText,
+        lang,
+        rate,
+      }),
+    });
+
+    if (requestId !== activeTtsRequestId) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(`TTS API failed with status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (requestId !== activeTtsRequestId) {
+      return null;
+    }
+
+    if (data.audio) {
+      clientAudioCache.set(cacheKey, data.audio);
+      return playAudioData(data.audio, requestId, onEnd, cleanText);
+    }
+    throw new Error('No audio data received');
+  } catch (err) {
+    console.warn('[TranslatorTTS] API failed, using local fallback:', err);
+    if (requestId === activeTtsRequestId) {
+      playLocalFallbackTTS(cleanText, lang, onEnd, slow ? 0.75 : 1.0);
+    }
+  }
+  return null;
+};
+
 let cachedVoices: SpeechSynthesisVoice[] = [];
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
   cachedVoices = window.speechSynthesis.getVoices();
@@ -213,12 +276,24 @@ export const getThaiMaleVoiceConfig = (): { voice: SpeechSynthesisVoice | null; 
   return { voice: anyThaiVoice || null, pitch: 1.0, rate: 1.0 };
 };
 
-export const playLocalFallbackTTS = (text: string, lang: string, onEnd?: () => void) => {
+export const playLocalFallbackTTS = (text: string, lang: string, onEnd?: () => void, customRate?: number) => {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang === 'CN' ? 'zh-CN' : lang === 'TH' ? 'th-TH' : 'en-US';
+      utterance.lang =
+        lang === 'CN'
+          ? 'zh-CN'
+          : lang === 'TH'
+          ? 'th-TH'
+          : lang === 'JP'
+          ? 'ja-JP'
+          : lang === 'KR'
+          ? 'ko-KR'
+          : 'en-US';
+      if (customRate) {
+        utterance.rate = customRate;
+      }
       const voices = cachedVoices.length > 0 ? cachedVoices : window.speechSynthesis.getVoices();
 
       if (lang === 'EN') {
