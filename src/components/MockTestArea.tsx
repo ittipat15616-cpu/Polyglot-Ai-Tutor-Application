@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Clock, Send, Key } from 'lucide-react';
+import { ChevronLeft, Clock, Send, Key, LogIn } from 'lucide-react';
+import { auth } from '../firebase';
+import { openLoginModal } from '../services/authHeaders';
 import { saveMockTestResult } from '../services/userPersistence';
+import { logMistakesBatch } from '../services/mistakeService';
 import { deductCredit } from '../services/subscriptionService';
 import {
   consumeByokFreeQuota,
@@ -33,6 +36,8 @@ export default function MockTestArea({ level, examId, videoId, onExit }: MockTes
   const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('mock_test'));
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [usedByokInResult, setUsedByokInResult] = useState(false);
   const [fallbackModal, setFallbackModal] = useState<{ open: boolean; reason: QuotaFallbackReason }>({
     open: false,
     reason: 'byok_daily_exhausted',
@@ -94,8 +99,15 @@ export default function MockTestArea({ level, examId, videoId, onExit }: MockTes
   const handleSubmit = async (forceUseCredits = false) => {
     if (!structure) return;
     setErrorBanner(null);
+    setNeedsLogin(false);
 
     const needsAi = doesHskExamNeedAi(level, answersRef.current);
+    if (needsAi && !auth.currentUser) {
+      setNeedsLogin(true);
+      setErrorBanner('กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนส่งพาร์ทเขียนให้ AI ตรวจหรือใช้สิทธิ์ BYOK ครับ');
+      return;
+    }
+
     const quota = getByokQuotaStatus('mock_test');
     const byokKey = getStoredByokKey();
     const shouldTryByok = needsAi && !forceUseCredits && quota.hasKey && quota.canUseFree && Boolean(byokKey);
@@ -126,6 +138,9 @@ export default function MockTestArea({ level, examId, videoId, onExit }: MockTes
       if (shouldTryByok) {
         await consumeByokFreeQuota('mock_test');
         setByokQuota(getByokQuotaStatus('mock_test'));
+        setUsedByokInResult(true);
+      } else {
+        setUsedByokInResult(false);
       }
 
       setResult(resultData);
@@ -141,9 +156,32 @@ export default function MockTestArea({ level, examId, videoId, onExit }: MockTes
         resultsBreakdown: resultData.results,
         createdAt: Date.now()
       });
+
+      // Auto-capture wrong attempted HSK mock test items into Smart Mistake Notebook
+      const wrongItems = (resultData.results || []).filter((r) => !r.isCorrect);
+      const attemptedWrong = wrongItems.filter((r) => (r.userAnswer || '').trim() !== '');
+      const toCapture = (attemptedWrong.length > 0 ? attemptedWrong : wrongItems.slice(0, 10)).slice(0, 35);
+      if (toCapture.length > 0) {
+        logMistakesBatch(
+          toCapture.map((r) => ({
+            lang: 'CN' as const,
+            source: 'mock_test' as const,
+            sourceLabel: `จำลองสอบ ${level} (${examId})`,
+            prompt: `ข้อสอบจำลอง ${level} ชุด ${examId} • ข้อที่ ${r.questionNumber}`,
+            userWrongAnswer: r.userAnswer || '(ไม่ได้ตอบ)',
+            correctAnswer: r.correctAnswer || '',
+            explanationTh: r.explanationThai,
+          }))
+        ).catch(() => {});
+      }
     } catch (err: any) {
       console.error(err);
-      if (shouldTryByok && (err?.byokQuotaExhausted || err?.status === 429)) {
+      if (err?.authRequired || (err?.status === 401 && !err?.byokInvalidKey)) {
+        setNeedsLogin(true);
+        setErrorBanner(err?.message || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI ตรวจข้อสอบ');
+        return;
+      }
+      if (shouldTryByok && (err?.byokQuotaExhausted || err?.byokInvalidKey || err?.status === 429)) {
         setFallbackModal({ open: true, reason: 'byok_google_429' });
         return;
       }
@@ -162,7 +200,15 @@ export default function MockTestArea({ level, examId, videoId, onExit }: MockTes
   }
 
   if (result) {
-    return <MockTestResult structure={structure} resultData={result} onClose={onExit} />;
+    return (
+      <MockTestResult
+        structure={structure}
+        resultData={result}
+        usedByok={usedByokInResult}
+        byokQuota={byokQuota}
+        onClose={onExit}
+      />
+    );
   }
 
   const isLowTime = timeLeft < 300; // less than 5 minutes
@@ -262,8 +308,17 @@ export default function MockTestArea({ level, examId, videoId, onExit }: MockTes
             )}
           </div>
           {errorBanner && (
-            <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-              {errorBanner}
+            <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+              <span>{errorBanner}</span>
+              {needsLogin && (
+                <button
+                  type="button"
+                  onClick={() => openLoginModal()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold shrink-0 cursor-pointer"
+                >
+                  <LogIn size={12} /> เข้าสู่ระบบ
+                </button>
+              )}
             </div>
           )}
         </div>

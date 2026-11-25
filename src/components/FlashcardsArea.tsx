@@ -4,6 +4,7 @@ import { EyeOff, Eye, ChevronLeft, ChevronRight, Home, Bot, Volume2, CheckCircle
 import { motion, AnimatePresence } from 'motion/react';
 import { saveFlashcardProgress, loadFlashcardProgress, loadLastFlashcardBookmark, saveFlashcardWordStates, loadFlashcardWordStates, FlashcardProgress } from '../services/userPersistence';
 import GoodnotesMode from './GoodnotesMode';
+import SaveToWordbookButton from './wordbook/SaveToWordbookButton';
 import { loadAllGoodnotesStates } from '../services/userPersistence';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -497,16 +498,31 @@ function FlashcardPlayer({
                 className="w-full flex-1 flex flex-col items-center justify-center p-8 absolute inset-0"
               >
             
-            {/* Ask AI Button */}
-            <button 
-              id="tutorial-flashcard-ask-ai"
-              onClick={() => onAskAI?.(currentWord.word)}
-              className="absolute top-4 left-4 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full hover:from-purple-600 hover:to-indigo-700 shadow-sm transition-all hover:scale-105 active:scale-95 text-xs font-bold"
-              title="ถามติวเตอร์ AI (เปิดสายคอลเพื่อสอนคำนี้ทันที)"
-            >
-              <Bot size={16} />
-              <span className="hidden sm:inline">ถาม AI ติวเตอร์</span>
-            </button>
+            {/* Ask AI & Save to SRS Wordbook Buttons */}
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 flex-wrap">
+              <button 
+                id="tutorial-flashcard-ask-ai"
+                onClick={() => onAskAI?.(currentWord.word)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full hover:from-purple-600 hover:to-indigo-700 shadow-sm transition-all hover:scale-105 active:scale-95 text-xs font-bold"
+                title="ถามติวเตอร์ AI (เปิดสายคอลเพื่อสอนคำนี้ทันที)"
+              >
+                <Bot size={16} />
+                <span className="hidden sm:inline">ถาม AI ติวเตอร์</span>
+              </button>
+              <SaveToWordbookButton
+                word={currentWord.word}
+                lang={lang === 'CN' ? 'CN' : 'EN'}
+                meaningTh={currentWord.th || currentWord.meaning || ''}
+                reading={lang === 'EN' ? currentWord.phonetic : currentWord.pinyin}
+                partOfSpeech={currentWord.type}
+                example={currentWord.example}
+                exampleTh={currentWord.exampleTh || currentWord.example_th}
+                source="flashcards"
+                sourceLabel={`แฟลชการ์ด ${level}`}
+                size="xs"
+                compactLabel
+              />
+            </div>
 
             {/* SAVE BUTTONS: "ยังจำไม่ได้" & "จำได้แล้ว" (SAVE ONLY - DOES NOT GO TO NEXT CARD) */}
             <div className="absolute top-4 right-4 flex items-center gap-2">

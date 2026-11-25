@@ -42,10 +42,10 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 0,
     description: 'แพ็กเกจทดลองสำหรับบัญชีใหม่ ปลดล็อคทุกหน้า 14 วัน + BYOK คอล AI ฟรีไม่อั้น',
     badgeColor: 'bg-teal-100 text-teal-800 border-teal-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคเข้าใช้งานได้ทุกหน้าเป็นเวลา 14 วัน (รวม Mock Tests, คาราโอเกะ & เนื้อหา EN)',
-      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 ครั้ง/วัน • ตรวจข้อสอบ 3 ครั้ง/วัน • แปลเพลงใหม่ 3 เพลง/วัน',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • Roleplay สร้างด่าน 30/สรุป 100 ต่อวัน',
       'ไม่มีเครดิต AI แถมฟรี (สามารถใช้ BYOK หรือซื้อแพ็กเกจ/เติมเครดิตเพิ่มได้)',
       'เมื่อครบ 14 วัน จะสลับเป็น Free Plan โดยเครดิตที่เติมไว้ยังอยู่ครบ'
     ]
@@ -57,11 +57,11 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 0,
     description: 'ใช้งานคลังคำศัพท์ แฟลชการ์ด คัดศัพท์ สอบศัพท์ เกมคำศัพท์ และคลังเพลงคาราโอเกะฟรี ทั้งจีนและอังกฤษ',
     badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'karaoke', 'contact', 'call'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'karaoke', 'reading', 'study_hub', 'contact', 'call'],
     features: [
       'ใช้งานฟรี 100%: คลังคำศัพท์ แฟลชการ์ด คัดศัพท์ สอบศัพท์ เกมคำศัพท์ และคลังเพลงคาราโอเกะ (EN & CN)',
       'เข้าเรียนบทเรียนและทำข้อสอบภาษาจีนได้ฟรี (CN)',
-      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 ครั้ง/วัน • ตรวจข้อสอบ 3 ครั้ง/วัน • แปลเพลงใหม่ 3 เพลง/วัน',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • Roleplay สร้างด่าน 30/สรุป 100 ต่อวัน',
       'สอบศัพท์ใช้ 1 เครดิต / แปลเพลงใหม่ใช้ 2 เครดิต (หรือใช้ฟรีผ่าน BYOK ตามสิทธิ์รายวัน)',
       'ล็อคเฉพาะระบบจำลองสอบ (Mock Tests) และบทเรียน/ข้อสอบภาษาอังกฤษ'
     ]
@@ -73,11 +73,11 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 50,
     description: 'เริ่มต้นสุดคุ้ม ปลดล็อคทุกหน้า 100% พร้อม 50 เครดิต AI / เดือน (อายุ 30 วัน)',
     badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคทุกหน้า 100% รวมระบบจำลองสอบ (Mock Tests), คาราโอเกะ และเนื้อหาภาษาอังกฤษ',
       '⚡ รับ 50 เครดิต AI / เดือน ใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)',
-      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 3 ต่อวัน',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 10 / อธิบายคำเพลง 100 / Roleplay สร้างด่าน 30 ต่อวัน',
       'อายุใช้งาน 30 วัน'
     ]
   },
@@ -88,11 +88,11 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 120,
     description: 'ยอดนิยมสำหรับเรียนต่อเนื่อง ปลดล็อคทุกหน้า พร้อม 120 เครดิต AI / เดือน (อายุ 30 วัน)',
     badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคทุกหน้า 100% รวมระบบจำลองสอบ (Mock Tests), คาราโอเกะ และเนื้อหาภาษาอังกฤษ',
       '⚡ รับ 120 เครดิต AI / เดือน ใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)',
-      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 3 ต่อวัน',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 10 / อธิบายคำเพลง 100 / Roleplay สร้างด่าน 30 ต่อวัน',
       'อายุใช้งาน 30 วัน'
     ]
   },
@@ -103,11 +103,11 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 200,
     description: 'คุ้มค่าที่สุดสำหรับฝึกฝนเต็มที่ ปลดล็อคทุกหน้า พร้อม 200 เครดิต AI / เดือน (อายุ 30 วัน)',
     badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคทุกหน้า 100% รวมระบบจำลองสอบ (Mock Tests), คาราโอเกะ และเนื้อหาภาษาอังกฤษ',
       '⚡ รับ 200 เครดิต AI / เดือน ใช้ได้ตลอด 30 วัน (หมดอายุพร้อมแพ็กเกจ)',
-      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 3 ต่อวัน',
+      'รองรับ BYOK: คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 / ตรวจข้อสอบ 3 / แปลเพลงใหม่ 10 / อธิบายคำเพลง 100 / Roleplay สร้างด่าน 30 ต่อวัน',
       'อายุใช้งาน 30 วัน'
     ]
   },
@@ -119,7 +119,7 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 90,
     description: 'แพ็กเกจเดิมในระบบ (เปิดครบทุกฟีเจอร์)',
     badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคทุกหน้า 100%',
       'รองรับ BYOK คอล AI ฟรีไม่อั้น + โควตาฟรีรายวัน (7/3/3)'
@@ -133,7 +133,7 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 120,
     description: 'แพ็กเกจเดิมในระบบ (เปิดครบทุกฟีเจอร์)',
     badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคทุกหน้า 100%',
       'รองรับ BYOK คอล AI ฟรีไม่อั้น + โควตาฟรีรายวัน (7/3/3)'
@@ -147,7 +147,7 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
     dailyCredits: 200,
     description: 'สิทธิ์เจ้าของระบบ (ตลอดชีพ)',
     badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
-    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'call', 'contact'],
+    allowedTabs: ['lessons', 'flashcards', 'vocab', 'vocab_exam', 'vocab_games', 'exercises', 'exams', 'mocktests', 'karaoke', 'reading', 'study_hub', 'call', 'contact'],
     features: [
       'ปลดล็อคทุกหน้า 100% ตลอดชีพ',
       'รองรับ BYOK คอล AI ฟรีไม่อั้น + โควตาฟรีรายวัน (7/3/3)'

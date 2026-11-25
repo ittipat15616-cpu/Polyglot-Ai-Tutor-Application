@@ -1,7 +1,8 @@
 import React from 'react';
-import { CheckCircle, XCircle, Award, RefreshCw, ChevronLeft } from 'lucide-react';
+import { CheckCircle, XCircle, Award, RefreshCw, ChevronLeft, Key } from 'lucide-react';
 import { IeltsGradeResult } from '../utils/ieltsGrading';
 import { AiGradingResult } from '../utils/AiGradingService';
+import { ByokQuotaStatus } from '../services/byokService';
 
 type Skill = 'listening' | 'reading' | 'writing' | 'speaking';
 
@@ -9,10 +10,12 @@ interface IeltsMockTestResultProps {
   examId: string;
   skill: Skill;
   resultData: IeltsGradeResult | AiGradingResult;
+  usedByok?: boolean;
+  byokQuota?: ByokQuotaStatus;
   onClose: () => void;
 }
 
-export default function IeltsMockTestResult({ examId, skill, resultData, onClose }: IeltsMockTestResultProps) {
+export default function IeltsMockTestResult({ examId, skill, resultData, usedByok, byokQuota, onClose }: IeltsMockTestResultProps) {
   const isAiGraded = skill === 'writing' || skill === 'speaking';
 
   if (isAiGraded) {
@@ -27,7 +30,16 @@ export default function IeltsMockTestResult({ examId, skill, resultData, onClose
           </div>
           
           <h2 className="text-3xl font-black text-gray-800 mb-2">สอบเสร็จสมบูรณ์!</h2>
-          <p className="text-lg text-gray-500 mb-8">นี่คือผลประเมินจาก AI สำหรับทักษะ {skill.toUpperCase()}</p>
+          <p className="text-lg text-gray-500 mb-6">นี่คือผลประเมินจาก AI สำหรับทักษะ {skill.toUpperCase()}</p>
+
+          {usedByok && byokQuota && (
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-6">
+              <Key size={14} className="text-emerald-600 shrink-0" />
+              <span>
+                ตรวจข้อสอบด้วย AI สำเร็จ (สิทธิ์ฟรี BYOK · 0 เครดิต) • สิทธิ์ตรวจข้อสอบวันนี้เหลือ {byokQuota.remaining}/{byokQuota.limit} ครั้ง
+              </span>
+            </div>
+          )}
           
           <div className="flex justify-center mb-10">
             <div className="bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-100 rounded-2xl p-8 shadow-sm">

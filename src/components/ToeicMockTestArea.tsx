@@ -5,6 +5,7 @@ import { getFirebaseStorageUrl } from '../utils/firebaseStorage';
 import AnnotationToolbar, { AnnotationState } from './AnnotationToolbar';
 import AnnotatableImage from './AnnotatableImage';
 import { saveMockTestResult } from '../services/userPersistence';
+import { logMistakesBatch } from '../services/mistakeService';
 import { deductCredit } from '../services/subscriptionService';
 import { toeicReadingData } from '../data/toeicReadingData';
 import { toeicListeningData } from '../data/toeicListeningData';
@@ -129,6 +130,29 @@ export default function ToeicMockTestArea({ examId, mode, onBack }: ToeicMockTes
       resultsBreakdown: detailedResults,
       createdAt: Date.now()
     });
+
+    // Auto-capture wrong attempted TOEIC items into Smart Mistake Notebook
+    const wrongToeic = (
+      Object.entries(detailedResults) as Array<
+        [string, { userAnswer?: string; correctAnswer?: string; isCorrect?: boolean }]
+      >
+    )
+      .filter(([, d]) => !d.isCorrect && (d.userAnswer || '').trim() !== '')
+      .slice(0, 35)
+      .map(([qNum, d]) => ({
+        lang: 'EN' as const,
+        source: 'mock_test' as const,
+        sourceLabel: `TOEIC ${isListening ? 'Listening' : 'Reading'} (${testData.name})`,
+        prompt: `TOEIC ${isListening ? 'Listening' : 'Reading'} (${testData.name}) • ข้อที่ ${qNum}`,
+        options: ['A', 'B', 'C', 'D'],
+        userWrongAnswer: d.userAnswer || '',
+        correctAnswer: d.correctAnswer || '',
+        explanationTh: `เฉลยข้อที่ ${qNum} ในชุด ${testData.name} คือตัวเลือก ${d.correctAnswer || ''}`,
+      }));
+
+    if (wrongToeic.length > 0) {
+      logMistakesBatch(wrongToeic).catch(() => {});
+    }
 
     setIsSubmitting(false);
   };

@@ -189,6 +189,128 @@
         "updatedAt": { "type": "number" }
       },
       "required": ["periodKey", "vocab_exam", "mock_test", "karaoke_translate", "video_subtitle", "updatedAt"]
+    },
+    "WordbookSrsEntry": {
+      "title": "Personal SRS Wordbook Entry",
+      "description": "User saved vocabulary entry with Spaced Repetition (SRS) scheduling state.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "word": { "type": "string" },
+        "reading": { "type": "string" },
+        "meaningTh": { "type": "string" },
+        "partOfSpeech": { "type": "string" },
+        "example": { "type": "string" },
+        "exampleTh": { "type": "string" },
+        "note": { "type": "string" },
+        "source": { "type": "string", "enum": ["lessons", "flashcards", "karaoke", "reading", "manual"] },
+        "sourceLabel": { "type": "string" },
+        "stage": { "type": "number" },
+        "intervalDays": { "type": "number" },
+        "repetitions": { "type": "number" },
+        "lapses": { "type": "number" },
+        "nextReviewAt": { "type": "number" },
+        "lastReviewedAt": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "lang", "word", "meaningTh", "source", "stage", "intervalDays", "repetitions", "lapses", "nextReviewAt", "createdAt", "updatedAt"]
+    },
+    "WordbookDailyReviewLog": {
+      "title": "Wordbook Daily Review Log",
+      "description": "Tracks daily SRS review counts per language for streak and progress analytics.",
+      "type": "object",
+      "properties": {
+        "dateKey": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "reviewedCount": { "type": "number" },
+        "rememberedCount": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["dateKey", "lang", "reviewedCount", "rememberedCount", "updatedAt"]
+    },
+    "MistakeNotebookEntry": {
+      "title": "Smart Mistake Notebook Entry",
+      "description": "Auto-captured wrong answer from Vocab Exam, Exams, Mock Tests, or Reading with 2-consecutive-correct mastery tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "source": { "type": "string", "enum": ["vocab_exam", "exams", "mock_test", "reading"] },
+        "sourceLabel": { "type": "string" },
+        "prompt": { "type": "string" },
+        "reading": { "type": "string" },
+        "options": { "type": "array" },
+        "correctOptionIndex": { "type": "number" },
+        "userWrongAnswer": { "type": "string" },
+        "correctAnswer": { "type": "string" },
+        "acceptedAnswers": { "type": "array" },
+        "explanationTh": { "type": "string" },
+        "vocabWord": { "type": "string" },
+        "vocabMeaningTh": { "type": "string" },
+        "vocabExample": { "type": "string" },
+        "wrongCount": { "type": "number" },
+        "consecutiveCorrect": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "mastered"] },
+        "masteredAt": { "type": "number" },
+        "lastPracticedAt": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "lang", "source", "sourceLabel", "prompt", "userWrongAnswer", "correctAnswer", "wrongCount", "consecutiveCorrect", "status", "createdAt", "updatedAt"]
+    },
+    "ShadowingDailyLog": {
+      "title": "Shadowing Daily Practice Log",
+      "description": "Lightweight daily summary of sentence shadowing practice counts and accuracy per language.",
+      "type": "object",
+      "properties": {
+        "dateKey": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "practiceCount": { "type": "number" },
+        "bestAccuracyPct": { "type": "number" },
+        "totalAccuracySum": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["dateKey", "lang", "practiceCount", "bestAccuracyPct", "totalAccuracySum", "updatedAt"]
+    },
+    "ReadingProgressEntry": {
+      "title": "Graded Reading Progress Entry",
+      "description": "Tracks completed stories and best comprehension quiz scores per user.",
+      "type": "object",
+      "properties": {
+        "storyId": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "level": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "bestQuizScore": { "type": "number" },
+        "quizTotal": { "type": "number" },
+        "readCount": { "type": "number" },
+        "lastReadAt": { "type": "number" }
+      },
+      "required": ["storyId", "lang", "level", "completed", "bestQuizScore", "quizTotal", "readCount", "lastReadAt"]
+    },
+    "ReadingCustomArticle": {
+      "title": "User Custom Pasted Article",
+      "description": "User-imported article analyzed into bilingual sentences, key vocab, and 3 comprehension quiz questions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lang": { "type": "string", "enum": ["EN", "CN"] },
+        "level": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "titlePinyin": { "type": "string" },
+        "titleTh": { "type": "string" },
+        "summaryTh": { "type": "string" },
+        "estimatedMinutes": { "type": "number" },
+        "sentences": { "type": "array" },
+        "vocab": { "type": "array" },
+        "quiz": { "type": "array" },
+        "isCustom": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "lang", "level", "category", "title", "titleTh", "sentences", "vocab", "quiz"]
     }
   },
   "firestore": {
@@ -257,6 +379,42 @@
         "$ref": "#/entities/ByokDailyUsage"
       },
       "description": "Daily free BYOK quota usage counters synced across user devices."
+    },
+    "/users/{userId}/wordbook_srs/{wordId}": {
+      "schema": {
+        "$ref": "#/entities/WordbookSrsEntry"
+      },
+      "description": "User personal SRS vocabulary entries synced across devices."
+    },
+    "/users/{userId}/wordbook_review_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/WordbookDailyReviewLog"
+      },
+      "description": "Daily SRS review activity counts per language."
+    },
+    "/users/{userId}/mistake_notebook/{mistakeId}": {
+      "schema": {
+        "$ref": "#/entities/MistakeNotebookEntry"
+      },
+      "description": "Auto-captured user mistakes from exams and quizzes with 2-streak mastery status."
+    },
+    "/users/{userId}/shadowing_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/ShadowingDailyLog"
+      },
+      "description": "Daily shadowing practice counts and average accuracy per language for Streak and Speaking analytics."
+    },
+    "/users/{userId}/reading_progress/{storyId}": {
+      "schema": {
+        "$ref": "#/entities/ReadingProgressEntry"
+      },
+      "description": "User reading completion status and best quiz scores for Graded Reading Studio stories."
+    },
+    "/users/{userId}/reading_custom/{articleId}": {
+      "schema": {
+        "$ref": "#/entities/ReadingCustomArticle"
+      },
+      "description": "User-pasted custom reading articles saved for unlimited free re-reading."
     }
   }
 }

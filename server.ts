@@ -9,10 +9,23 @@ import os from "os";
 import { synthesizeEdgeTTS } from "./src/server/edgeTTS";
 import { registerKaraokeRoutes } from "./src/server/karaokeRoutes";
 import {
+  BYOK_FLASH_MODEL_CHAIN,
+  ByokInvalidKeyError,
   ByokQuotaExhaustedError,
+  LIVE_PRIMARY_MODEL,
+  LIVE_TPM_FALLBACK_MODELS,
+  createClientFromKey,
+  createLiveClientFromKey,
   generateContentWithByokFallback,
+  isInvalidKeyError,
+  isModelNotFoundOrUnsupportedError,
   isQuotaOrRateLimitError,
+  safeParseGeminiJson,
 } from "./src/server/byokGeminiHelper";
+import {
+  requireFirebaseAuth,
+  verifyFirebaseIdToken,
+} from "./src/server/authMiddleware";
 import { WebSocketServer, WebSocket } from "ws";
 import { PDFDocument } from 'pdf-lib';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, ThinkingLevel } from "@google/genai";
@@ -59,6 +72,27 @@ export function getServerGeminiClient(): GoogleGenAI {
   return new GoogleGenAI({
     apiKey,
     httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+}
+
+// Server-only Live API client: explicitly uses v1beta/v1alpha because @google/genai 3.x defaults to v1 (no BidiGenerateContent).
+export function getServerLiveGeminiClient(apiVersion: "v1beta" | "v1alpha" = "v1beta"): GoogleGenAI {
+  const apiKey =
+    process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 10
+      ? process.env.GEMINI_API_KEY.trim()
+      : null;
+
+  if (!apiKey) {
+    throw new Error("ระบบ AI ของเซิร์ฟเวอร์ยังไม่พร้อมใช้งานในขณะนี้ กรุณาติดต่อผู้ดูแลระบบ");
+  }
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      apiVersion,
       headers: {
         'User-Agent': 'aistudio-build',
       }
@@ -131,50 +165,58 @@ async function startServer() {
     firestoreAdmin: db,
   });
 
-  // Validate user-provided Gemini API Key (BYOK)
-  app.post("/api/validate-key", express.json(), async (req, res) => {
+  // Validate user-provided Gemini API Key (BYOK) — requires signed-in Google account
+  app.post("/api/validate-key", express.json(), requireFirebaseAuth, async (req, res) => {
     try {
       const { apiKey } = req.body;
-      if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length < 10) {
+      if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length < 15) {
         return res.status(400).json({ valid: false, message: "กรุณาระบุ Gemini API Key ให้ถูกต้อง" });
       }
       const cleanKey = apiKey.trim();
-      const testAi = new GoogleGenAI({ apiKey: cleanKey });
-      let testResult: any = null;
-      try {
-        testResult = await testAi.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents: "Hello",
-        });
-      } catch (err1: any) {
-        console.warn("Validation with gemini-3.8-flash failed, trying gemini-flash-latest...", err1?.message);
+      const testAi = createClientFromKey(cleanKey);
+      let lastErr: any = null;
+      let sawQuota = false;
+
+      for (const model of BYOK_FLASH_MODEL_CHAIN) {
         try {
-          testResult = await testAi.models.generateContent({
-            model: "gemini-flash-latest",
-            contents: "Hello",
+          const testResult = await testAi.models.generateContent({
+            model,
+            contents: "Reply with OK",
           });
-        } catch (err2: any) {
-          console.warn("Validation with gemini-flash-latest failed, trying gemini-3.1-flash-lite...", err2?.message);
-          testResult = await testAi.models.generateContent({
-            model: "gemini-3.1-flash-lite",
-            contents: "Hello",
-          });
+          if (testResult && (testResult.text || testResult.candidates)) {
+            return res.json({
+              valid: true,
+              modelTested: model,
+              message: `Gemini API Key ใช้งานได้สมบูรณ์และถูกต้อง! (ทดสอบผ่าน ${model})`,
+            });
+          }
+        } catch (err: any) {
+          lastErr = err;
+          if (isInvalidKeyError(err)) {
+            throw err;
+          }
+          if (isQuotaOrRateLimitError(err)) {
+            sawQuota = true;
+          }
+          console.warn(`[BYOK Validate] Model ${model} failed (${String(err?.message || err).slice(0, 120)}), trying next...`);
         }
       }
-      if (testResult && (testResult.text || testResult.candidates)) {
-        return res.json({ valid: true, message: "Gemini API Key ใช้งานได้สมบูรณ์และถูกต้อง!" });
+
+      if (sawQuota) {
+        return res.status(429).json({
+          valid: false,
+          message: "API Key ถูกต้องแต่กำลังติดขีดจำกัดโควตาชั่วคราวจาก Google (429) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง",
+        });
       }
+      if (lastErr) throw lastErr;
       return res.status(400).json({ valid: false, message: "ไม่สามารถทดสอบ API Key ได้ กรุณาลองใหม่อีกครั้ง" });
     } catch (err: any) {
       const errMsg = err?.message || "";
       console.error("BYOK key validation failed:", errMsg);
-      if (errMsg.includes("API key not valid") || errMsg.includes("400") || errMsg.includes("API_KEY_INVALID")) {
-        return res.status(400).json({ valid: false, message: "API Key ไม่ถูกต้อง หรือถูกยกเลิกแล้วจาก Google AI Studio" });
+      if (isInvalidKeyError(err)) {
+        return res.status(400).json({ valid: false, message: "API Key ไม่ถูกต้อง หมดอายุ หรือถูกยกเลิกแล้วจาก Google AI Studio" });
       }
-      if (errMsg.includes("403") || errMsg.includes("PERMISSION_DENIED")) {
-        return res.status(403).json({ valid: false, message: "API Key นี้ไม่มีสิทธิ์เข้าถึง หรือถูกระงับการใช้งาน" });
-      }
-      return res.status(400).json({ valid: false, message: `ไม่สามารถตรวจสอบคีย์ได้: ${errMsg.slice(0, 120)}` });
+      return res.status(400).json({ valid: false, message: `ไม่สามารถตรวจสอบคีย์ได้: ${errMsg.slice(0, 140)}` });
     }
   });
 
@@ -198,7 +240,7 @@ async function startServer() {
 
   const ttsCache = new Map<string, string>();
 
-  app.post("/api/generate-subtitles", express.json({ limit: "60mb" }), async (req, res) => {
+  app.post("/api/generate-subtitles", requireFirebaseAuth, express.json({ limit: "60mb" }), async (req, res) => {
     try {
       const { audioBase64, mimeType, durationSec, useByokQuota, byokKey } = req.body;
       if (!audioBase64 || typeof audioBase64 !== "string") {
@@ -275,19 +317,14 @@ CRITICAL RULES:
         },
         useByokQuota: isByokMode,
         byokKey: isByokMode ? byokKey.trim() : null,
+        byokProfile: "hydrogen",
         serverDefaultModel: "gemini-3.8-flash",
         serverThinkingLevel: ThinkingLevel.LOW,
         getServerClient: getServerGeminiClient,
       });
 
-      const rawText = (aiResult.text || "[]").replace(/```json|```/g, "").trim();
-      let parsed: any[] = [];
-      try {
-        const json = JSON.parse(rawText);
-        if (Array.isArray(json)) parsed = json;
-      } catch {
-        parsed = [];
-      }
+      const parsedRaw = safeParseGeminiJson<any>(aiResult.text || "[]", []);
+      const parsed: any[] = Array.isArray(parsedRaw) ? parsedRaw : [];
 
       const cues = parsed
         .filter((item) => item && typeof item.text === "string" && item.text.trim().length > 0)
@@ -309,8 +346,14 @@ CRITICAL RULES:
         })
         .sort((a, b) => a.startSec - b.startSec);
 
-      return res.json({ subtitles: cues, usedByok: isByokMode });
+      return res.json({ subtitles: cues, usedByok: isByokMode, modelUsed: aiResult.modelUsed });
     } catch (e: any) {
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({
+          byokInvalidKey: true,
+          error: e.message,
+        });
+      }
       if (e instanceof ByokQuotaExhaustedError) {
         return res.status(429).json({
           byokQuotaExhausted: true,
@@ -318,7 +361,7 @@ CRITICAL RULES:
         });
       }
       console.error("[Subtitles] Error:", e?.message || e);
-      const isQuota = e?.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED"));
+      const isQuota = isQuotaOrRateLimitError(e);
       return res.status(isQuota ? 429 : 500).json({
         byokQuotaExhausted: Boolean(isQuota && req.body?.useByokQuota),
         error: e?.message || "ไม่สามารถสร้างซับไตเติ้ลอัตโนมัติได้ กรุณาลองใหม่อีกครั้ง",
@@ -326,144 +369,14 @@ CRITICAL RULES:
     }
   });
 
-  app.post("/api/chat", express.json(), async (req, res) => {
-    try {
-      const { message, history, lang, userId } = req.body;
-      // Strictly use Owner's paid server API key (BYOK is only for AI Voice/Video Calls)
-      const client = getServerGeminiClient();
-      
-      // Ensure the history alternates properly, starting with 'user'
-      let contents = [];
-      if (history && Array.isArray(history)) {
-        // Skip any leading 'model' messages to avoid Invalid Role Sequence errors
-        const firstUserIndex = history.findIndex((h: any) => h.role === 'user');
-        if (firstUserIndex !== -1) {
-          contents = history.slice(firstUserIndex);
-        }
-      }
-      contents.push({ role: 'user', parts: [{ text: message }] });
-
-      const personaBaseEN = `คุณคือติวเตอร์สอนภาษาอังกฤษ AI ชื่อ "Mr.Pe" เป็นผู้ชายหล่อเท่ อายุประมาณ 25 ปี สอนชิวๆ สบายๆ ไม่ดุนักเรียนเลย สอนสนุกน่าฟัง มีความใจดี อธิบายได้ละเอียดและเข้าใจง่าย และมีความติดตลกฮาๆเล็กน้อย คุณจำเรื่องราวต่างๆ ของผู้เรียนและสิ่งที่คุยกันได้ข้ามสาย ทั้งตอนพิมพ์แชทและตอนโทรวิดีโอคอลคุยกันเสมือนคุณคือคนๆ เดียวกันอย่างแท้จริง`;
-      const personaBaseCN = `คุณคือติวเตอร์สอนภาษาจีน AI ชื่อ "李老师" (Li Laoshi) หรือในภาษาไทยคือ "หลี่เหล่าซือ" เป็นคุณครูผู้หญิงวัยประมาณ 30 ปีที่มีความน่ารักมากๆ อบอุ่น อารมณ์ดี น้ำเสียงร่าเริงสดใส อ่อนหวานและใจดีไม่ดุ แต่ในตอนสอนมีความจริงจังและมุ่งมั่น คุณจำเรื่องราวต่างๆ ของผู้เรียนและสิ่งที่คุยกันได้ข้ามสาย ทั้งตอนพิมพ์แชทและตอนโทรวิดีโอคอลคุยกันเสมือนคุณคือคนๆ เดียวกันอย่างแท้จริง`;
-
-      const activePersona = lang === 'CN' ? personaBaseCN : personaBaseEN;
-
-      // Fetch global memories from Firestore if userId is specified, otherwise use cache
-      let userMemory: string[] = [];
-      const userKey = userId || "anonymous";
-      const cacheKey = `${userKey}_${lang}`;
-
-      if (db && userId) {
-        try {
-          const memoryDoc = await db.doc(`users/${userId}/memory/${lang}`).get();
-          if (memoryDoc.exists) {
-            const memories = memoryDoc.data()?.memories;
-            if (Array.isArray(memories)) {
-              userMemory = memories;
-              sessionMemoryStore.set(cacheKey, userMemory);
-            }
-          }
-        } catch (err) {
-          console.error("Error loading memories in /api/chat:", err);
-        }
-      } else {
-        userMemory = sessionMemoryStore.get(cacheKey) || [];
-      }
-
-      let memoriesStr = "";
-      if (userMemory.length > 0) {
-        memoriesStr = `\n\n[ข้อมูลสำคัญและความจำสะสมเกี่ยวกับผู้เรียนที่คุณบันทึกไว้ในระบบ (โปรดจดจำข้อมูลเหล่านี้และใช้ในการโต้ตอบอย่างเป็นธรรมชาติเสมือนว่าจำได้จริงๆ ทั้งในแชทนี้และตอนคอลคุยกัน): \n- ${userMemory.join("\n- ")}]`;
-      }
-
-      const systemInstruction = `${activePersona}
-
-คุณจะคอยให้คำแนะนำช่วยเหลือผู้เรียนด้วยความใจดี ตอบแชทแบบอบอุ่น เป็นกันเอง และอธิบายข้อมูลภาษาอย่างสั้นกระชับเข้าใจง่าย${memoriesStr}
-
-IMPORTANT MEMORY RULE: หากผู้เรียนเปิดเผยข้อมูลส่วนตัวหรือความต้องการที่น่าจดจำ (เช่น ชื่อเล่น, อาชีพ, งานอดิเรก, สัตว์เลี้ยง, ระดับภาษา, เป้าหมายเรียนรู้) หรือข้อมูลความรู้อื่นๆ ที่ควรบันทึกไว้ในความจำยาวเพื่อนำไปใช้พูดคุยทักทายในการแชทครั้งต่อไปหรือในการโทรวิดีโอคอล/โทรเสียงครั้งหน้า ให้เรียกใช้ฟังก์ชัน "memorize_info" เพื่อจดจำข้อมูลนั้นลงในระบบสมองของคุรร่วมกันข้ามแพลตฟอร์มทันที!`;
-
-      const memorizeInfoDeclaration = {
-        name: "memorize_info",
-        description: "Memorize important details about the user, their name, preferences, goals, and learning context so you can remember them across sessions and during video/voice calls.",
-        parameters: {
-          type: Type.OBJECT,
-          properties: {
-            memoryText: { type: Type.STRING, description: "Information to summarize and remember, e.g., 'ผู้ใช้ชื่อเก่ง ชอบเรียนจีนเพื่อสื่อสารทางธุรกิจ'" }
-          },
-          required: ["memoryText"]
-        }
-      };
-
-      const chatConfig = {
-        systemInstruction,
-        tools: [{ functionDeclarations: [memorizeInfoDeclaration] }]
-      };
-
-      // Query Gemini
-      let response = await client.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: contents,
-        config: chatConfig
-      });
-
-      // Handle function calling if Gemini returned one
-      if (response.functionCalls && response.functionCalls.length > 0) {
-        const call = response.functionCalls[0];
-        if (call.name === 'memorize_info') {
-          const info = (call.args as any)?.memoryText as string;
-          if (info) {
-            userMemory.push(info);
-            // limit memory size to prevent context overflow (keep last 20)
-            if (userMemory.length > 20) userMemory.shift();
-            sessionMemoryStore.set(cacheKey, userMemory);
-            console.log(`[Chat API] Memorized for ${cacheKey}:`, info);
-
-            // Save to Firestore if logged in
-            if (db && userId) {
-              try {
-                await db.doc(`users/${userId}/memory/${lang}`).set({
-                  memories: userMemory,
-                  updatedAt: Date.now()
-                }, { merge: true });
-                console.log(`[Chat API] Firestore memory updated for ${userId} (${lang})`);
-              } catch (err) {
-                console.error("[Chat API] Failed to save memory to Firestore:", err);
-              }
-            }
-          }
-
-          // Fetch the final text response from Gemini by providing the tool response
-          const assistantContent = response.candidates?.[0]?.content;
-          const toolContent = {
-            role: 'tool',
-            parts: [{
-              functionResponse: {
-                name: 'memorize_info',
-                response: { result: "Information successfully memorized for future chats and voice calls." }
-              }
-            }]
-          };
-
-          const secondResponse = await client.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: [...contents, assistantContent, toolContent],
-            config: chatConfig
-          });
-
-          res.json({ text: secondResponse.text });
-        } else {
-          res.json({ text: response.text });
-        }
-      } else {
-        res.json({ text: response.text });
-      }
-    } catch (e: any) {
-      console.error("Chat API error:", e);
-      const isQuota = e.message && (e.message.includes("429") || e.message.includes("RESOURCE_EXHAUSTED"));
-      res.status(isQuota ? 429 : 500).json({ error: e.message || "Something went wrong" });
-    }
+  app.post("/api/chat", requireFirebaseAuth, express.json(), async (_req, res) => {
+    // Disabled legacy endpoint so unbilled direct calls can never consume the owner's server API key
+    return res.status(410).json({
+      error: "ช่องทางแชทเก่ายกเลิกการใช้งานแล้ว กรุณาใช้งานผ่านโหมดคอลสด AI ในแอปครับ",
+    });
   });
 
-  app.post("/api/grade-vocab", async (req, res) => {
+  app.post("/api/grade-vocab", requireFirebaseAuth, async (req, res) => {
     try {
       const { answers, lang, useByokQuota, byokKey } = req.body;
       const prompt = `You are an extremely encouraging, highly flexible, and intelligent language evaluator for a language learning app.
@@ -494,6 +407,7 @@ ${JSON.stringify(answers, null, 2)}`;
         contents: prompt,
         useByokQuota: Boolean(useByokQuota),
         byokKey: byokKey || null,
+        byokProfile: "flash_lite",
         serverDefaultModel: "gemini-3.1-pro-preview",
         serverThinkingLevel: ThinkingLevel.HIGH,
         getServerClient: getServerGeminiClient,
@@ -513,10 +427,13 @@ ${JSON.stringify(answers, null, 2)}`;
         }
       });
 
-      const cleanText = (aiRes.text || "[]").replace(/```json/gi, "").replace(/```/g, "").trim();
-      res.json(JSON.parse(cleanText));
+      const parsed = safeParseGeminiJson(aiRes.text || "[]");
+      res.json(Array.isArray(parsed) ? parsed : []);
     } catch (e: any) {
       console.error("Vocab Grade Error:", e);
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({ error: e.message, byokInvalidKey: true });
+      }
       if (e instanceof ByokQuotaExhaustedError) {
         return res.status(429).json({ error: e.message, byokQuotaExhausted: true });
       }
@@ -528,7 +445,7 @@ ${JSON.stringify(answers, null, 2)}`;
     }
   });
 
-  app.post("/api/grade-speaking", express.json({ limit: "200mb" }), async (req, res) => {
+  app.post("/api/grade-speaking", requireFirebaseAuth, express.json({ limit: "200mb" }), async (req, res) => {
     try {
       const { audios, examId, useByokQuota, byokKey } = req.body;
       if (!audios || audios.length === 0) return res.status(400).json({ error: "Missing audio" });
@@ -577,20 +494,34 @@ Provide the result strictly in this JSON format (no markdown tags):
         }
       }
 
+      if (Boolean(useByokQuota)) {
+        const totalAudioBytes = audios.reduce((sum: number, a: any) => sum + String(a?.base64 || "").length, 0);
+        if (totalAudioBytes > 18 * 1024 * 1024) {
+          return res.status(413).json({
+            error: "ไฟล์เสียงสอบพูดมีขนาดรวมเกินเกณฑ์ Free Tier (18 MB) กรุณาอัดเสียงให้กระชับขึ้นหรือเลือกใช้เครดิตในแอปครับ",
+          });
+        }
+      }
+
       const aiRes = await generateContentWithByokFallback({
         contents: parts,
         useByokQuota: Boolean(useByokQuota),
         byokKey: byokKey || null,
+        byokProfile: "hydrogen",
         serverDefaultModel: "gemini-3.1-pro-preview",
         serverThinkingLevel: ThinkingLevel.HIGH,
         getServerClient: getServerGeminiClient,
+        config: {
+          responseMimeType: "application/json",
+        },
       });
 
-      let text = aiRes.text || "{}";
-      text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-      res.json(JSON.parse(text));
+      res.json(safeParseGeminiJson(aiRes.text || "{}"));
     } catch (e: any) {
       console.error("Gemini API Error in Speaking:", e);
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({ error: e.message, byokInvalidKey: true });
+      }
       if (e instanceof ByokQuotaExhaustedError || (req.body?.useByokQuota && isQuotaOrRateLimitError(e))) {
         return res.status(429).json({
           error: e?.message || "Google API Key ส่วนตัวติดขีดจำกัดชั่วคราว (429)",
@@ -601,7 +532,7 @@ Provide the result strictly in this JSON format (no markdown tags):
     }
   });
 
-  app.post("/api/grade-writing", async (req, res) => {
+  app.post("/api/grade-writing", requireFirebaseAuth, async (req, res) => {
     try {
       const { prompt, examId, useByokQuota, byokKey } = req.body;
       const parts: any[] = [{ text: prompt }];
@@ -642,16 +573,21 @@ Provide the result strictly in this JSON format (no markdown tags):
         contents: parts,
         useByokQuota: Boolean(useByokQuota),
         byokKey: byokKey || null,
+        byokProfile: "hydrogen",
         serverDefaultModel: "gemini-3.1-pro-preview",
         serverThinkingLevel: ThinkingLevel.HIGH,
         getServerClient: getServerGeminiClient,
+        config: {
+          responseMimeType: "application/json",
+        },
       });
 
-      let text = aiRes.text || "{}";
-      text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-      res.json(JSON.parse(text));
+      res.json(safeParseGeminiJson(aiRes.text || "{}"));
     } catch (e: any) {
       console.error("Gemini API Error in Writing:", e);
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({ error: e.message, byokInvalidKey: true });
+      }
       if (e instanceof ByokQuotaExhaustedError || (req.body?.useByokQuota && isQuotaOrRateLimitError(e))) {
         return res.status(429).json({
           error: e?.message || "Google API Key ส่วนตัวติดขีดจำกัดชั่วคราว (429)",
@@ -663,7 +599,7 @@ Provide the result strictly in this JSON format (no markdown tags):
   });
 
   // Batch writing grader for HSK4 (Q96-100) and HSK5 (Q99-100): grades all writing items in ONE single AI request (huge RPM/RPD saver for BYOK free keys!)
-  app.post("/api/grade-writing-batch", async (req, res) => {
+  app.post("/api/grade-writing-batch", requireFirebaseAuth, async (req, res) => {
     try {
       const { level, items, useByokQuota, byokKey } = req.body;
       if (!Array.isArray(items) || items.length === 0) {
@@ -688,6 +624,7 @@ ${JSON.stringify(items, null, 2)}`;
         contents: batchPrompt,
         useByokQuota: Boolean(useByokQuota),
         byokKey: byokKey || null,
+        byokProfile: "hydrogen",
         serverDefaultModel: "gemini-3.1-pro-preview",
         serverThinkingLevel: ThinkingLevel.HIGH,
         getServerClient: getServerGeminiClient,
@@ -714,10 +651,12 @@ ${JSON.stringify(items, null, 2)}`;
         },
       });
 
-      const clean = (aiRes.text || "{}").replace(/```json/gi, "").replace(/```/g, "").trim();
-      res.json(JSON.parse(clean));
+      res.json(safeParseGeminiJson(aiRes.text || "{}"));
     } catch (e: any) {
       console.error("Gemini API Error in Batch Writing:", e);
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({ error: e.message, byokInvalidKey: true });
+      }
       if (e instanceof ByokQuotaExhaustedError || (req.body?.useByokQuota && isQuotaOrRateLimitError(e))) {
         return res.status(429).json({
           error: e?.message || "Google API Key ส่วนตัวติดขีดจำกัดชั่วคราว (429)",
@@ -728,64 +667,14 @@ ${JSON.stringify(items, null, 2)}`;
     }
   });
 
-  app.post("/api/generate-learning-plan", express.json(), async (req, res) => {
-    try {
-      const { answers, targetLang } = req.body;
-      if (!answers) {
-        return res.status(400).json({ error: "Missing answers" });
-      }
-
-      // Strictly use Owner's paid server API key (BYOK is only for AI Voice/Video Calls)
-      const client = getServerGeminiClient();
-
-      const prompt = `คุณเป็น AI ผู้เชี่ยวชาญด้านการวางแผนการเรียนภาษา${targetLang === 'CN' ? 'จีน' : targetLang === 'EN' ? 'อังกฤษ' : 'ไทย'}
-ผู้เรียนได้ทำแบบสอบถามดังนี้:
-${answers.map((a: any) => `- ${a.question} ตอบ: ${a.answer}`).join('\n')}
-
-จงสร้างแผนการเรียน 30 วัน ที่อ่านง่าย ไม่ซับซ้อนเกินไป เน้นการลงมือทำจริงตามฟีเจอร์ที่มีในแอป โดยใช้ภาษาไทยและใช้ Markdown ให้สวยงาม
-
-**เงื่อนไขสำคัญมาก**: ไม่ว่าเป้าหมายของผู้ใช้คืออะไร ต้องมีการสอดแทรกการท่องจำคำศัพท์ทุกวันเสมอ
-
-สิ่งที่คุณต้องมีในแผนการเรียนนี้อย่างครบถ้วน (จัดรูปแบบให้กระชับ ชัดเจน):
-
-1. **เป้าหมายและภารกิจสำหรับวันนี้ (Today's Mission)**: (สำคัญมาก ให้อยู่ส่วนแรกสุด) บอกเป้าหมายและภารกิจที่ต้องทำเป็นข้อๆ โดยอ้างอิงฟีเจอร์ในแอป (ให้ปรับจำนวนหรือระดับให้เหมาะกับผู้ใช้) **ตัวอย่างรูปแบบที่ต้องการ**:
-   - ไปที่หน้าคลังคำศัพท์ เรียนรู้คำศัพท์...คำ ระดับ... พร้อมฟังเสียงและออกเสียงตาม และแต่งประโยคคำละ 1 ประโยค (ให้เวลาเรียนรู้ไม่เกิน 1 นาทีต่อคำ)
-   - ไปที่หน้าแฟลชการ์ด เปิดคำที่เรียนไป อ่านผ่านๆ แบบเปิดคำแปล จากนั้นปิดคำแปลแล้วอ่าน หากติดขัดให้ทวนซ้ำ พอคล่องแล้วให้เปิดคำแปลปิดคำศัพท์ แล้วพูดประโยคที่แต่งไว้
-   - ไปหน้าคัดศัพท์ เขียนคำศัพท์ ความหมาย และประโยคลงไป (ไม่ต้องเขียนคำอ่านถ้าเป็นภาษาอังกฤษ)
-   - ไปหน้าเกมคำศัพท์ แนะนำให้เล่น Word Scramble และ Wall Smasher เพื่อฝึกสะกดคำศัพท์ให้แม่นยำ และเล่นเกมอื่นอีก 1 เกม
-   - ไปหน้าสอบศัพท์ ทดสอบคำที่เรียนไป พลาดคำไหนให้ทวน
-   - ไปหน้าบทเรียน (ระบุบทเรียนที่เหมาะสม) เพื่อเรียนรู้...
-   - ไปหน้าข้อสอบ (ถ้ามี) ลองทำข้อสอบ...
-
-2. **ภาพรวมเป้าหมายระยะสั้นและระยะยาว**: สรุปสิ่งที่จะได้เรียนรู้เมื่อจบวันที่ 1, วันที่ 2, สิ้นสัปดาห์ที่ 1, สิ้นสัปดาห์ที่ 2, และสิ้นเดือน
-
-3. **แผนรายสัปดาห์ และรายวัน (สำหรับวันที่ 2-30)**:
-   - **แผนรายสัปดาห์**: สรุปเป้าหมายหลัก
-   - **แผนรายวัน**: อธิบายภารกิจของแต่ละวันให้กระชับ นำเสนอเป็น bullet points ที่ทำตามได้ง่ายๆ อิงกับหน้าต่างๆ ของแอปเหมือนตัวอย่างด้านบน พร้อมการทบทวน (Review) สิ่งที่เรียนไป
-
-ข้อกำหนด:
-- จัดรูปแบบด้วย Markdown (##, ###) และ Bullet points ให้สวยงาม อ่านง่าย ไม่เยิ่นเย้อ
-- ปรับเนื้อหา ความยาก และความเข้มข้นให้ตรงกับเวลาเรียน เป้าหมาย และสไตล์ของผู้ใช้
-`;
-
-      const response = await client.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: prompt
-      });
-
-      const planMarkdown = response.text;
-      if (!planMarkdown) {
-        return res.status(500).json({ error: "Failed to generate plan" });
-      }
-
-      res.json({ plan: planMarkdown });
-    } catch (e: any) {
-      console.error("Learning Plan API Error:", e);
-      res.status(500).json({ error: e.message || "Learning Plan generation failed" });
-    }
+  app.post("/api/generate-learning-plan", requireFirebaseAuth, express.json(), async (_req, res) => {
+    // Disabled legacy AI endpoint: Study Plan now generates 100% offline at 0 cost
+    return res.status(410).json({
+      error: "ระบบวางแผนการเรียนทำงานออฟไลน์ฟรีบนอุปกรณ์แล้ว ไม่ต้องเรียกใช้เซิร์ฟเวอร์ AI",
+    });
   });
 
-  app.post("/api/verify-slip", express.json({ limit: "50mb" }), async (req, res) => {
+  app.post("/api/verify-slip", requireFirebaseAuth, express.json({ limit: "50mb" }), async (req, res) => {
     try {
       const { imageUrl, expectedAmount } = req.body;
       if (!imageUrl || !expectedAmount) {
@@ -1038,46 +927,11 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
   });
 
   // =========================================================================
-  // REAL-LIFE ROLEPLAY MISSIONS API (100% FREE FOR LEARNERS - 0 CREDITS)
+  // REAL-LIFE ROLEPLAY MISSIONS API (STRICT ZERO-OWNER-COST ISOLATION)
+  // - BYOK calls: strictly use customer BYOK key on Flash-Lite bucket (1,000 RPD)
+  // - Credit calls: only use server key when paidWithCredits / paidCallWithCredits is true
   // =========================================================================
-  async function generateRoleplayJsonWithFallback(
-    client: GoogleGenAI,
-    prompt: string,
-    responseSchema: any
-  ): Promise<any> {
-    const attempts: Array<{ model: string; useThinking: boolean }> = [
-      { model: "gemini-4-hydrogen", useThinking: true },
-      { model: "gemini-3.8-flash", useThinking: false },
-      { model: "gemini-3.1-flash-lite", useThinking: false },
-    ];
-    let lastError: any = null;
-    for (const attempt of attempts) {
-      try {
-        const config: any = {
-          responseMimeType: "application/json",
-          responseSchema,
-        };
-        if (attempt.useThinking) {
-          config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
-        }
-        const resp = await client.models.generateContent({
-          model: attempt.model,
-          contents: prompt,
-          config,
-        });
-        const text = resp.text?.trim();
-        if (text) {
-          return JSON.parse(text);
-        }
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`[Roleplay API] Model ${attempt.model} failed, trying fallback:`, err?.message || err);
-      }
-    }
-    throw lastError || new Error("AI analysis failed");
-  }
-
-  app.post("/api/roleplay-report", async (req, res) => {
+  app.post("/api/roleplay-report", requireFirebaseAuth, async (req, res) => {
     try {
       const {
         mission,
@@ -1085,7 +939,9 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
         transcript = [],
         completedObjectives = [false, false, false],
         durationSeconds = 0,
+        useByokQuota = false,
         byokKey,
+        paidCallWithCredits = false,
       } = req.body || {};
 
       if (!mission || !mission.id) {
@@ -1120,6 +976,38 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
         String(mission.objectives?.[1] || "ภารกิจที่ 2"),
         String(mission.objectives?.[2] || "ภารกิจที่ 3"),
       ];
+
+      const buildLocalSummary = (summaryTh: string) => {
+        const objCount = liveCompleted.filter(Boolean).length;
+        const fallbackScore = objCount === 3 ? 85 : objCount === 2 ? 70 : objCount === 1 ? 55 : 40;
+        const stars = objCount === 3 ? 3 : objCount === 2 ? 2 : objCount === 1 ? 1 : 0;
+        return {
+          missionId: mission.id,
+          missionTitle: mission.titleTh || mission.titleEn || "Roleplay Mission",
+          lang: targetLang,
+          durationSeconds: Number(durationSeconds) || 0,
+          completedObjectives: liveCompleted,
+          objectivesText,
+          stars,
+          overallScore: fallbackScore,
+          metrics: {
+            fluency: fallbackScore,
+            grammar: fallbackScore,
+            vocabulary: fallbackScore,
+            naturalness: fallbackScore,
+          },
+          summaryTh,
+          improvements: [],
+          keyVocab: Array.isArray(mission.survivalKit)
+            ? mission.survivalKit.slice(0, 4).map((p: any) => ({
+                word: targetLang === "CN" ? p.cn : p.en,
+                pinyin: targetLang === "CN" ? p.pinyin : undefined,
+                meaningTh: p.th,
+              }))
+            : [],
+          usedAiAnalysis: false,
+        };
+      };
 
       // Zero-waste short-circuit: if user barely spoke (< 4 words/chars), return an instant free local report
       if (userTurns.length === 0 || userTokenCount < 4) {
@@ -1157,7 +1045,19 @@ Return ONLY the raw JSON object. Do not use Markdown formatting.`;
         });
       }
 
-      const client = getGeminiClient(byokKey);
+      const cleanByok = typeof byokKey === "string" && byokKey.trim().length > 15 ? byokKey.trim() : null;
+      const shouldUseByok = Boolean(useByokQuota && cleanByok);
+      const canUseServerKey = !shouldUseByok && Boolean(paidCallWithCredits);
+
+      // STRICT 0-COST GUARD: If neither BYOK nor a credit-paid call, NEVER call owner's server key!
+      if (!shouldUseByok && !canUseServerKey) {
+        return res.json(
+          buildLocalSummary(
+            "บันทึกผลการทำภารกิจเรียบร้อยแล้วครับ! เชื่อมต่อคีย์ฟรี BYOK เพื่อปลดล็อกใบสรุปคะแนนวิเคราะห์ประโยคพูดด้วย AI ฟรีสูงสุด 100 ครั้ง/วัน"
+          )
+        );
+      }
+
       const dialogueText = safeTranscript
         .slice(-40)
         .map((t) => `${t.role === "user" ? "Learner" : mission.aiRoleName || "AI"}: ${t.text}`)
@@ -1245,7 +1145,20 @@ INSTRUCTIONS:
 5. Provide 3-5 useful "keyVocab" phrases from this scenario (${targetLang === "CN" ? "Chinese + pinyin + Thai meaning" : "English + Thai meaning"}).
 Return strict JSON matching the schema.`;
 
-      const aiResult = await generateRoleplayJsonWithFallback(client, analysisPrompt, reportSchema);
+      const aiRes = await generateContentWithByokFallback({
+        contents: analysisPrompt,
+        useByokQuota: shouldUseByok,
+        strictByokOnly: shouldUseByok,
+        byokKey: shouldUseByok ? cleanByok : null,
+        byokProfile: "flash_lite",
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: canUseServerKey ? getServerGeminiClient : undefined,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: reportSchema,
+        },
+      });
+      const aiResult = safeParseGeminiJson(aiRes.text || "{}");
 
       const finalCompleted: [boolean, boolean, boolean] = [
         liveCompleted[0] || Boolean(aiResult?.verifiedObjectives?.[0]),
@@ -1338,15 +1251,31 @@ Return strict JSON matching the schema.`;
     }
   });
 
-  app.post("/api/roleplay-custom-mission", async (req, res) => {
+  app.post("/api/roleplay-custom-mission", requireFirebaseAuth, async (req, res) => {
     try {
-      const { prompt, difficulty = "medium", lang = "EN", byokKey } = req.body || {};
+      const {
+        prompt,
+        difficulty = "medium",
+        lang = "EN",
+        useByokQuota = false,
+        byokKey,
+        paidWithCredits = false,
+      } = req.body || {};
       if (!prompt || typeof prompt !== "string" || prompt.trim().length < 4) {
         return res.status(400).json({ error: "กรุณาระบุสถานการณ์ที่อยากซ้อมพูดให้ชัดเจนอย่างน้อย 4 ตัวอักษรครับ" });
       }
 
       const safeDiff = ["easy", "medium", "hard"].includes(difficulty) ? difficulty : "medium";
-      const client = getGeminiClient(byokKey);
+      const cleanByok = typeof byokKey === "string" && byokKey.trim().length > 15 ? byokKey.trim() : null;
+      const shouldUseByok = Boolean(useByokQuota && cleanByok);
+
+      // STRICT 0-COST GUARD: Never touch owner's server API key unless user paid credits!
+      if (!shouldUseByok && !paidWithCredits) {
+        return res.status(402).json({
+          creditRequired: true,
+          error: "กรุณาเชื่อมคีย์ฟรี BYOK (ฟรี 30 ด่าน/วัน) หรือยืนยันใช้ 1 เครดิตเพื่อสร้างด่านจำลองสถานการณ์เองครับ",
+        });
+      }
 
       const customSchema = {
         type: Type.OBJECT,
@@ -1417,7 +1346,20 @@ Requirements:
 - For medium or hard difficulty, include a realistic twist (twistTh & twistEn); for easy, leave twistTh/twistEn empty.
 Return strict JSON matching the schema.`;
 
-      const generated = await generateRoleplayJsonWithFallback(client, genPrompt, customSchema);
+      const aiRes = await generateContentWithByokFallback({
+        contents: genPrompt,
+        useByokQuota: shouldUseByok,
+        strictByokOnly: shouldUseByok,
+        byokKey: shouldUseByok ? cleanByok : null,
+        byokProfile: "flash_lite",
+        serverDefaultModel: "gemini-3.8-flash",
+        getServerClient: paidWithCredits ? getServerGeminiClient : undefined,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: customSchema,
+        },
+      });
+      const generated = safeParseGeminiJson(aiRes.text || "{}");
 
       const customMission = {
         id: `custom_${Date.now()}`,
@@ -1451,11 +1393,395 @@ Return strict JSON matching the schema.`;
         isCustom: true,
       };
 
-      return res.json({ mission: customMission });
+      return res.json({ mission: customMission, usedByok: aiRes.usedByok, modelUsed: aiRes.modelUsed });
     } catch (e: any) {
       console.error("[Custom Roleplay API Error]:", e?.message || e);
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({ byokInvalidKey: true, error: e.message });
+      }
+      if (e instanceof ByokQuotaExhaustedError || (req.body?.useByokQuota && isQuotaOrRateLimitError(e))) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: e?.message || "Google API Key ส่วนตัวติดขีดจำกัดชั่วคราว (429)",
+        });
+      }
       return res.status(500).json({
         error: e?.message || "ไม่สามารถสร้างด่านจำลองได้ในขณะนี้ กรุณาลองใหม่อีกครั้งครับ",
+      });
+    }
+  });
+
+  // =========================================================================
+  // GRADED READING STUDIO — CUSTOM ARTICLE ANALYSIS API (BYOK / 2 CREDITS)
+  // =========================================================================
+  app.post("/api/shadowing/analyze", requireFirebaseAuth, express.json({ limit: "8mb" }), async (req, res) => {
+    try {
+      const { audioBase64, mimeType, sentence, lang = "EN", byokKey } = req.body || {};
+
+      if (!sentence || typeof sentence !== "string" || sentence.trim().length < 1 || sentence.trim().length > 500) {
+        return res.status(400).json({ error: "ประโยคต้นแบบไม่ถูกต้อง" });
+      }
+      if (!audioBase64 || typeof audioBase64 !== "string" || audioBase64.length < 100) {
+        return res.status(400).json({ error: "ไม่พบข้อมูลเสียงที่บันทึกไว้ กรุณาลองอัดเสียงใหม่อีกครั้ง" });
+      }
+      if (audioBase64.length > 6 * 1024 * 1024) {
+        return res.status(400).json({ error: "ไฟล์เสียงยาวเกินไป กรุณาพูดให้กระชับภายใน 20 วินาที" });
+      }
+
+      const cleanByok = typeof byokKey === "string" && byokKey.trim().length > 15 ? byokKey.trim() : null;
+      if (!cleanByok) {
+        return res.status(400).json({
+          byokRequired: true,
+          error: "ต้องเชื่อมคีย์ฟรี BYOK ก่อนใช้ AI วิเคราะห์เสียงพูด (โหมดอัดเสียงฟังเทียบต้นฉบับยังใช้งานฟรีได้ตลอด)",
+        });
+      }
+
+      const safeLang: "EN" | "CN" = lang === "CN" ? "CN" : "EN";
+      const rawBaseMime =
+        typeof mimeType === "string" ? mimeType.split(";")[0].trim().toLowerCase() : "audio/webm";
+      const ALLOWED_AUDIO_MIMES: Record<string, string> = {
+        "audio/webm": "audio/webm",
+        "audio/mp4": "audio/mp4",
+        "audio/m4a": "audio/mp4",
+        "audio/x-m4a": "audio/mp4",
+        "audio/ogg": "audio/ogg",
+        "audio/wav": "audio/wav",
+        "audio/x-wav": "audio/wav",
+        "audio/mpeg": "audio/mpeg",
+        "audio/mp3": "audio/mpeg",
+        "audio/aac": "audio/aac",
+      };
+      const cleanMime = ALLOWED_AUDIO_MIMES[rawBaseMime] || "audio/webm";
+
+      const shadowingSchema = {
+        type: Type.OBJECT,
+        properties: {
+          heardSpeech: {
+            type: Type.BOOLEAN,
+            description: "True if human speech is audible in the clip; false ONLY if completely silent or pure background noise.",
+          },
+          transcript: {
+            type: Type.STRING,
+            description:
+              safeLang === "CN"
+                ? "Literal Simplified Chinese transcription of what the speaker actually said (no pinyin, no English, do not invent words they skipped)."
+                : "Literal English transcription of what the speaker actually said (do not invent words they skipped).",
+          },
+          pronunciationScore: {
+            type: Type.INTEGER,
+            description: "Overall pronunciation & delivery score from 0 to 100 based on clarity, natural rhythm/tones, and accuracy vs target sentence.",
+          },
+          feedbackTh: {
+            type: Type.STRING,
+            description: "Short, warm, specific coaching feedback in natural Thai (1-2 concise sentences).",
+          },
+          tipsTh: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "1 to 3 concrete, actionable pronunciation/tone tips in Thai pointing out specific words or sounds to improve (empty if score >= 95).",
+          },
+        },
+        required: ["heardSpeech", "transcript", "pronunciationScore", "feedbackTh", "tipsTh"],
+      };
+
+      const targetClean = sentence.trim();
+      const promptText = `You are a supportive, accurate ${
+        safeLang === "CN" ? "Mandarin Chinese" : "English"
+      } pronunciation coach for a Thai learner practicing sentence shadowing.
+
+Target sentence: "${targetClean}"
+
+Listen carefully to the attached audio recording and return strict JSON:
+1. heardSpeech: true if you can hear the learner speaking; false ONLY if the audio is completely silent or pure noise with zero speech.
+2. transcript: Write literally what the learner actually spoke in ${
+        safeLang === "CN" ? "Simplified Chinese characters ONLY (no Pinyin)" : "English"
+      }. If they skipped a word or mispronounced it as a different word, reflect what they actually said rather than copying the target sentence blindly.
+3. pronunciationScore: Integer 0-100 grading overall clarity, ${
+        safeLang === "CN" ? "Mandarin tones (เสียงวรรณยุกต์ 1-4), initials/finals," : "word stress, ending sounds (-s, -ed, -t), rhythm,"
+      } and match to the target sentence.
+4. feedbackTh: 1-2 encouraging, specific sentences in natural Thai summarizing what sounded good and what to polish.
+5. tipsTh: 1-3 short bullet tips in Thai (e.g., pointing out a specific word's ending sound or a Chinese tone pair). Keep each tip under 18 words.`;
+
+      // STRICT 0-COST BYOK-ONLY: Never falls back to owner's paid server API key
+      const aiRes = await generateContentWithByokFallback({
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: cleanMime,
+                data: audioBase64,
+              },
+            },
+            { text: promptText },
+          ],
+        },
+        useByokQuota: true,
+        strictByokOnly: true,
+        byokKey: cleanByok,
+        byokProfile: "flash_lite",
+        getServerClient: undefined,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: shadowingSchema,
+        },
+      });
+
+      const parsed = safeParseGeminiJson<{
+        heardSpeech?: boolean;
+        transcript?: string;
+        pronunciationScore?: number;
+        feedbackTh?: string;
+        tipsTh?: string[];
+      }>(aiRes.text || "{}", {
+        heardSpeech: false,
+        transcript: "",
+        pronunciationScore: 0,
+        feedbackTh: "",
+        tipsTh: [],
+      });
+
+      const transcript = typeof parsed.transcript === "string" ? parsed.transcript.trim() : "";
+      const heardSpeech = Boolean(parsed.heardSpeech && transcript.length > 0);
+      const rawScore = Number(parsed.pronunciationScore);
+      const pronunciationScore = Number.isFinite(rawScore)
+        ? Math.max(0, Math.min(100, Math.round(rawScore)))
+        : 0;
+      const feedbackTh = typeof parsed.feedbackTh === "string" ? parsed.feedbackTh.trim() : "";
+      const tipsTh = Array.isArray(parsed.tipsTh)
+        ? parsed.tipsTh.filter((t): t is string => typeof t === "string" && t.trim().length > 0).slice(0, 3)
+        : [];
+
+      return res.json({
+        heardSpeech,
+        transcript,
+        pronunciationScore,
+        feedbackTh,
+        tipsTh,
+        modelUsed: aiRes.modelUsed,
+      });
+    } catch (error: any) {
+      console.error("[/api/shadowing/analyze] Error:", error?.message || error);
+      if (error instanceof ByokInvalidKeyError) {
+        return res.status(401).json({
+          byokInvalidKey: true,
+          error: error.message,
+        });
+      }
+      if (error instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(error)) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) กรุณารอสักครู่แล้วลองใหม่อีกครั้ง (คุณยังกดฟังเสียงที่อัดเทียบต้นฉบับได้ทันที)",
+        });
+      }
+      return res.status(500).json({
+        error: "ไม่สามารถวิเคราะห์เสียงด้วย AI ได้ชั่วคราว แต่คุณยังกดฟังเสียงที่อัดเทียบต้นฉบับได้ปกติครับ",
+      });
+    }
+  });
+
+  app.post("/api/reading/analyze", requireFirebaseAuth, express.json({ limit: "1mb" }), async (req, res) => {
+    try {
+      const { text = "", lang = "EN", title = "", byokKey } = req.body || {};
+      const cleanText = String(text || "").trim();
+      if (cleanText.length < 30) {
+        return res.status(400).json({ error: "กรุณาวางบทความอย่างน้อย 30 ตัวอักษร" });
+      }
+      if (cleanText.length > 3500) {
+        return res.status(400).json({ error: "บทความยาวเกิน 3,500 ตัวอักษร กรุณาตัดให้กระชับขึ้น" });
+      }
+
+      const targetLang: "EN" | "CN" = lang === "CN" ? "CN" : "EN";
+      const hasByok = typeof byokKey === "string" && byokKey.trim().length > 15;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          titlePinyin: { type: Type.STRING },
+          titleTh: { type: Type.STRING },
+          summaryTh: { type: Type.STRING },
+          level: { type: Type.STRING },
+          category: { type: Type.STRING },
+          sentences: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                text: { type: Type.STRING },
+                pinyin: { type: Type.STRING },
+                th: { type: Type.STRING },
+              },
+              required: ["text", "th"],
+            },
+          },
+          vocab: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                word: { type: Type.STRING },
+                reading: { type: Type.STRING },
+                pos: { type: Type.STRING },
+                meaningTh: { type: Type.STRING },
+              },
+              required: ["word", "meaningTh"],
+            },
+          },
+          quiz: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                questionTh: { type: Type.STRING },
+                options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                correctIndex: { type: Type.INTEGER },
+                explanationTh: { type: Type.STRING },
+              },
+              required: ["questionTh", "options", "correctIndex", "explanationTh"],
+            },
+          },
+        },
+        required: ["title", "titleTh", "summaryTh", "level", "category", "sentences", "vocab", "quiz"],
+      };
+
+      const validLevels =
+        targetLang === "CN" ? "HSK1, HSK2, HSK3, HSK4, HSK5, or HSK6" : "A1, A2, B1, B2, or C1";
+
+      const prompt = `You are a bilingual language curriculum editor for Thai learners studying ${
+        targetLang === "CN" ? "Mandarin Chinese (Simplified)" : "English"
+      }.
+Analyze the following user-provided article and return structured JSON:
+- Split the text cleanly into 4 to 14 natural sentences preserving the original wording.
+- For each sentence, provide a natural Thai translation ("th")${
+        targetLang === "CN" ? ' and accurate tone-marked Pinyin ("pinyin")' : ' (set "pinyin" to empty string)'
+      }.
+- Estimate the proficiency level using strictly one of: ${validLevels}.
+- Pick one category from: daily, news, travel, work, culture, science.
+- Provide a concise title in the target language${
+        title ? ` (user suggested title: "${String(title).trim()}")` : ""
+      }${targetLang === "CN" ? ', "titlePinyin" with tone marks,' : ""} "titleTh" in Thai, and a 1-sentence "summaryTh" in Thai.
+- Extract 5 to 8 useful key vocabulary words appearing in the text with ${
+        targetLang === "CN" ? "tone-marked Pinyin" : "IPA pronunciation"
+      } in "reading", part of speech in "pos", and clear Thai meaning in "meaningTh".
+- Create exactly 3 reading comprehension multiple-choice questions in Thai ("questionTh"), each with 4 Thai options ("options"), 0-based "correctIndex" (0..3), and a clear Thai "explanationTh".
+
+Article text:
+"""
+${cleanText}
+"""`;
+
+      const aiRes = await generateContentWithByokFallback({
+        contents: prompt,
+        useByokQuota: hasByok,
+        byokKey: hasByok ? byokKey.trim() : null,
+        byokProfile: "flash36",
+        serverDefaultModel: "gemini-4-hydrogen",
+        serverThinkingLevel: ThinkingLevel.LOW,
+        getServerClient: getServerGeminiClient,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema,
+        },
+      });
+      const parsed = safeParseGeminiJson(aiRes.text || "{}");
+
+      const allowedEnLevels = new Set(["A1", "A2", "B1", "B2", "C1"]);
+      const allowedCnLevels = new Set(["HSK1", "HSK2", "HSK3", "HSK4", "HSK5", "HSK6"]);
+      const allowedCats = new Set(["daily", "news", "travel", "work", "culture", "science"]);
+
+      const rawLevel = String(parsed.level || "").toUpperCase().replace(/\s+/g, "");
+      const safeLevel =
+        targetLang === "CN"
+          ? allowedCnLevels.has(rawLevel)
+            ? rawLevel
+            : "HSK3"
+          : allowedEnLevels.has(rawLevel)
+          ? rawLevel
+          : "B1";
+
+      const rawCat = String(parsed.category || "").toLowerCase().trim();
+      const safeCat = allowedCats.has(rawCat) ? rawCat : "news";
+
+      const safeSentences = Array.isArray(parsed.sentences)
+        ? parsed.sentences
+            .filter((s: any) => s && typeof s.text === "string" && s.text.trim())
+            .map((s: any) => ({
+              text: String(s.text).trim(),
+              pinyin: targetLang === "CN" && s.pinyin ? String(s.pinyin).trim() : undefined,
+              th: String(s.th || "").trim(),
+            }))
+        : [];
+
+      if (safeSentences.length === 0) {
+        return res.status(500).json({ error: "ไม่สามารถแบ่งประโยคจากบทความนี้ได้ กรุณาลองใหม่" });
+      }
+
+      const safeVocab = Array.isArray(parsed.vocab)
+        ? parsed.vocab
+            .filter((v: any) => v && v.word && v.meaningTh)
+            .slice(0, 10)
+            .map((v: any) => ({
+              word: String(v.word).trim(),
+              reading: v.reading ? String(v.reading).trim() : undefined,
+              pos: v.pos ? String(v.pos).trim() : undefined,
+              meaningTh: String(v.meaningTh).trim(),
+            }))
+        : [];
+
+      const safeQuiz = Array.isArray(parsed.quiz)
+        ? parsed.quiz
+            .filter((q: any) => q && q.questionTh && Array.isArray(q.options) && q.options.length >= 2)
+            .slice(0, 3)
+            .map((q: any) => {
+              const opts = q.options.slice(0, 4).map((o: any) => String(o).trim());
+              const cIdx = Math.max(0, Math.min(opts.length - 1, Number(q.correctIndex) || 0));
+              return {
+                questionTh: String(q.questionTh).trim(),
+                options: opts,
+                correctIndex: cIdx,
+                explanationTh: String(q.explanationTh || "").trim(),
+              };
+            })
+        : [];
+
+      const story = {
+        id: `custom_${targetLang.toLowerCase()}_${Date.now()}`,
+        lang: targetLang,
+        level: safeLevel,
+        category: safeCat,
+        title: String(parsed.title || title || "Custom Article").trim(),
+        titlePinyin:
+          targetLang === "CN" && parsed.titlePinyin ? String(parsed.titlePinyin).trim() : undefined,
+        titleTh: String(parsed.titleTh || parsed.title || "บทความส่วนตัว").trim(),
+        summaryTh: String(parsed.summaryTh || "บทความที่นำเข้าและวิเคราะห์ด้วย AI").trim(),
+        estimatedMinutes: Math.max(2, Math.min(8, Math.ceil(safeSentences.length / 3))),
+        sentences: safeSentences,
+        vocab: safeVocab,
+        quiz: safeQuiz,
+        isCustom: true,
+        createdAt: Date.now(),
+      };
+
+      return res.json({ story });
+    } catch (e: any) {
+      if (e instanceof ByokInvalidKeyError) {
+        return res.status(400).json({
+          byokInvalidKey: true,
+          error: e.message,
+        });
+      }
+      if (e instanceof ByokQuotaExhaustedError) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: e.message,
+        });
+      }
+      const msg = String(e?.message || e || "");
+      const status = isQuotaOrRateLimitError(e) ? 429 : 500;
+      console.error("[Reading Analyze API Error]:", msg);
+      return res.status(status).json({
+        byokQuotaExhausted: Boolean(status === 429 && req.body?.byokKey),
+        error: msg || "ไม่สามารถวิเคราะห์บทความได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
       });
     }
   });
@@ -1511,8 +1837,26 @@ Return strict JSON matching the schema.`;
     let isSeriousMode = url.searchParams.get('seriousMode') === 'true';
     const isRoleplayMode = url.searchParams.get('roleplayMode') === 'true';
     const roleplayVoiceGenderParam = url.searchParams.get('voiceGender') || '';
-    const userId = url.searchParams.get('userId') || null;
+    const idToken = url.searchParams.get('idToken');
     const byokKey = url.searchParams.get('byokKey');
+
+    // Enforce Google sign-in strictly before opening any Live Gemini session (BYOK or Server key)
+    const verifiedUser = await verifyFirebaseIdToken(idToken);
+    if (!verifiedUser) {
+      clearInterval(pingInterval);
+      if (clientWs.readyState === 1) {
+        clientWs.send(
+          JSON.stringify({
+            type: 'error',
+            authRequired: true,
+            message: 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้งานการคอลกับ AI และ BYOK',
+          })
+        );
+        clientWs.close();
+      }
+      return;
+    }
+    const userId: string | null = verifiedUser.uid;
 
     // In Roleplay mode, attach an immediate one-shot listener BEFORE any awaits so we never miss init_roleplay
     let roleplayInitData: {
@@ -1561,21 +1905,46 @@ Return strict JSON matching the schema.`;
     }
 
     // If client provided a valid BYOK key, use it directly so that this session NEVER touches the server's key
+    const cleanLiveByokKey =
+      byokKey && typeof byokKey === 'string' && byokKey.trim().length > 15 ? byokKey.trim() : null;
+    const isByokLiveSession = Boolean(cleanLiveByokKey);
+    const getLiveClientForVersion = (apiVersion: "v1beta" | "v1alpha" = "v1beta"): GoogleGenAI => {
+      if (isByokLiveSession) {
+        return createLiveClientFromKey(cleanLiveByokKey!, apiVersion);
+      }
+      return getServerLiveGeminiClient(apiVersion);
+    };
+
+    let activeLiveApiVersion: "v1beta" | "v1alpha" = "v1beta";
     let sessionAi: GoogleGenAI | null = null;
-    if (byokKey && typeof byokKey === 'string' && byokKey.trim().length > 10) {
+    if (cleanLiveByokKey) {
       try {
-        sessionAi = new GoogleGenAI({ apiKey: byokKey.trim() });
+        sessionAi = getLiveClientForVersion("v1beta");
         console.log(`[Live Session] Successfully using customer BYOK key for ${userId || clientId} (Server key is NOT used)`);
       } catch (err) {
         console.warn("[Live Session] Error setting up BYOK key:", err);
       }
     }
 
-    // Fallback to system key ONLY if BYOK key is not provided
+    // STRICT 0-COST GUARD: If BYOK key was supplied, NEVER fall back to owner's server key!
+    if (isByokLiveSession && !sessionAi) {
+      clearInterval(pingInterval);
+      if (clientWs.readyState === 1) {
+        clientWs.send(JSON.stringify({
+          type: 'error',
+          message: 'API Key ส่วนตัว (BYOK) ไม่ถูกต้อง กรุณาตรวจสอบคีย์ในหน้าตั้งค่า BYOK ครับ'
+        }));
+        clientWs.close();
+      }
+      return;
+    }
+
+    // Fallback to system key ONLY when NOT in BYOK mode (credit-paid live call)
     if (!sessionAi) {
       try {
-        sessionAi = getGeminiClient();
+        sessionAi = getLiveClientForVersion("v1beta");
       } catch (err: any) {
+        clearInterval(pingInterval);
         console.warn("[Live Session] No BYOK key and server GEMINI_API_KEY is not available:", err?.message);
         if (clientWs.readyState === 1) {
           clientWs.send(JSON.stringify({
@@ -1787,6 +2156,8 @@ You are a Native Speaker. Your text-to-speech voice engine MUST perfectly match 
 
     let session: any;
     let sessionClosed = false;
+    let clientClosed = false;
+    let isInitialConnecting = true;
     let lastImageInputAt = 0;
     let upstreamReconnectTimer: NodeJS.Timeout | null = null;
     let upstreamReconnectAttempts = 0;
@@ -1819,235 +2190,420 @@ You are a Native Speaker. Your text-to-speech voice engine MUST perfectly match 
         console.error("Error replaying document context:", e);
       }
     };
-    const scheduleGeminiReconnect = () => {
-      if (clientWs.readyState !== 1 || upstreamReconnectTimer) return;
-      const delay = Math.min(1000 + upstreamReconnectAttempts * 1000, 8000);
+    // Live-only model switcher: always use gemini-3.8-live as primary;
+    // if 65K TPM is hit, temporarily switch to gemini-3-flash-live until the next minute boundary resets TPM.
+    // If primary model returns 404/unsupported on a user's BYOK key, fall back through official Live-only audio models.
+    let tpmFallbackUntilMs = 0;
+    let primaryModelUnavailableForSession = false;
+    let liveFallbackIdx = 0;
+    const getActiveLiveModel = (): string => {
+      if (primaryModelUnavailableForSession || Date.now() < tpmFallbackUntilMs) {
+        return LIVE_TPM_FALLBACK_MODELS[liveFallbackIdx] || LIVE_TPM_FALLBACK_MODELS[0];
+      }
+      return LIVE_PRIMARY_MODEL;
+    };
+    const triggerLiveTpmFallback = (reasonText?: string) => {
+      // Switch to Gemini 3 Flash Live until start of next minute (+2s grace) when 3.8 Live TPM resets
+      const nextMinuteResetMs = Math.ceil(Date.now() / 60000) * 60000 + 2000;
+      tpmFallbackUntilMs = Math.max(tpmFallbackUntilMs, nextMinuteResetMs);
+      if (!primaryModelUnavailableForSession) {
+        liveFallbackIdx = 0;
+      }
+      if (liveSessionOptions) {
+        liveSessionOptions.model = getActiveLiveModel();
+      }
+      console.warn(
+        `[Live TPM Switch] Switching temporarily to ${getActiveLiveModel()} until ${new Date(tpmFallbackUntilMs).toISOString()} (${reasonText || "TPM limit"})`
+      );
+      if (!isInitialConnecting && clientWs.readyState === 1) {
+        clientWs.send(JSON.stringify({
+          type: 'status',
+          message: 'กำลังสลับไปใช้โหมด Live สำรองชั่วคราวจนกว่าโควตานาทีถัดไปจะรีเซ็ต...'
+        }));
+      }
+    };
+
+    const isLiveModelCompatError = (errOrText: any): boolean => {
+      const msg = String(errOrText?.message || errOrText || "").toLowerCase();
+      return (
+        isModelNotFoundOrUnsupportedError(errOrText) ||
+        msg.includes("1008") ||
+        msg.includes("bidigeneratecontent") ||
+        msg.includes("not supported for") ||
+        msg.includes("publisher model")
+      );
+    };
+
+    const buildLiveConnectConfig = () => ({
+      responseModalities: [Modality.AUDIO],
+      systemInstruction,
+      outputAudioTranscription: {},
+      inputAudioTranscription: {},
+      tools: [{
+        functionDeclarations: [
+          {
+            name: "update_board",
+            description: "Update the shared whiteboard screen to display vocabulary, grammar, sentences, helpful reply hints, or gentle corrections to the user.",
+            parameters: {
+              type: Type.OBJECT,
+              properties: {
+                items: {
+                  type: Type.ARRAY,
+                  description: "List of items to display on the board. Keep each coherent sentence/phrase together in a single item so the board remains tidy and readable.",
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      word: { type: Type.STRING, description: "The word, full sentence, reply hint, or grammar point" },
+                      pinyin: { type: Type.STRING, description: "Pronunciation or pinyin (if applicable, separate with spaces for sentences)" },
+                      meaning: { type: Type.STRING, description: "Translation or meaning in Thai and/or English" },
+                      example: { type: Type.STRING, description: "Example sentence (optional)" }
+                    },
+                    required: ["word", "meaning"]
+                  }
+                }
+              },
+              required: ["items"]
+            }
+          },
+          ...(isRoleplayMode
+            ? [
+                {
+                  name: "complete_mission_objective",
+                  description: "Mark one of the learner's 3 Roleplay Mission objectives (1, 2, or 3) as completed in real time as soon as the learner achieves it in the conversation.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      objectiveIndex: {
+                        type: Type.INTEGER,
+                        description: "The objective number completed: 1, 2, or 3"
+                      },
+                      reason: {
+                        type: Type.STRING,
+                        description: "Brief note on how the learner completed this objective"
+                      }
+                    },
+                    required: ["objectiveIndex"]
+                  }
+                }
+              ]
+            : [
+                {
+                  name: "memorize_info",
+                  description: "Memorize important details about the user, their name, what they are wearing/showing via the camera, their preferences, and the conversation details.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      memoryText: { type: Type.STRING, description: "Information to summarize and remember, e.g., 'ผู้ใช้ชื่อออฟ มีแมว 1 ตัว ชอบเรียนเรื่องสถานที่'" }
+                    },
+                    required: ["memoryText"]
+                  }
+                }
+              ])
+        ]
+      }],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+      }
+    });
+
+    const liveCallbacks = {
+      onmessage: (message: LiveServerMessage) => {
+        const serverContent = (message as any).serverContent;
+        
+        // 1. Audio Output
+        const parts = serverContent?.modelTurn?.parts;
+        if (parts && clientWs.readyState === 1) {
+          for (const part of parts) {
+            if (part.inlineData?.data) {
+              clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
+            }
+          }
+        }
+
+        // 2. Output Transcription (AI's speech to text)
+        const outTrans = serverContent?.outputTranscription;
+        if (outTrans?.text && outTrans.text.trim() && clientWs.readyState === 1) {
+          console.log("AI Transcription:", outTrans.text);
+          clientWs.send(JSON.stringify({ type: 'transcript', role: 'model', text: outTrans.text }));
+          addTranscriptChunk('model', outTrans.text);
+        }
+
+        // 3. Input Transcription (User's speech to text)
+        const inTrans = serverContent?.inputTranscription;
+        if (inTrans?.text && inTrans.text.trim() && clientWs.readyState === 1) {
+          console.log("User Transcription:", inTrans.text);
+          clientWs.send(JSON.stringify({ type: 'transcript', role: 'user', text: inTrans.text }));
+          addTranscriptChunk('user', inTrans.text);
+        }
+
+        // Tool Call response
+        if (message.toolCall && message.toolCall.functionCalls) {
+          const toolResponses: any[] = [];
+          for (const call of message.toolCall.functionCalls) {
+            if (call.name === 'update_board') {
+              if (clientWs.readyState === 1) {
+                clientWs.send(JSON.stringify({ type: 'board_update', data: call.args }));
+              }
+              toolResponses.push({ 
+                id: call.id, 
+                name: call.name, 
+                response: { result: "Board successfully updated and shown to user." } 
+              });
+            } else if (call.name === 'complete_mission_objective') {
+              const objIdx = Number((call.args as any)?.objectiveIndex);
+              const reason = String((call.args as any)?.reason || '');
+              if (objIdx >= 1 && objIdx <= 3 && clientWs.readyState === 1) {
+                console.log(`[Roleplay] Objective #${objIdx} completed: ${reason}`);
+                clientWs.send(JSON.stringify({
+                  type: 'roleplay_objective_completed',
+                  objectiveIndex: objIdx,
+                  reason
+                }));
+              }
+              toolResponses.push({
+                id: call.id,
+                name: call.name,
+                response: { result: `Objective ${objIdx} marked as completed on the learner's checklist. Continue staying in character naturally.` }
+              });
+            } else if (call.name === 'memorize_info') {
+              const info = (call.args as any)?.memoryText as string;
+              if (info && !isRoleplayMode) {
+                 userMemory.push(info);
+                 if (userMemory.length > 20) userMemory.shift();
+                 sessionMemoryStore.set(cacheKey, userMemory);
+                 console.log(`Memorized for ${cacheKey}:`, info);
+
+                 if (db && userId) {
+                   db.doc(`users/${userId}/memory/${targetLang}`).set({
+                     memories: userMemory,
+                     updatedAt: Date.now()
+                   }, { merge: true }).catch(err => {
+                     console.error("Failed to save memory to Firestore:", err);
+                   });
+                 }
+              }
+              toolResponses.push({ 
+                id: call.id, 
+                name: call.name, 
+                response: { result: "Information memorized successfully." } 
+              });
+            }
+          }
+          if (toolResponses.length > 0 && session) {
+             try {
+               session.sendToolResponse({ functionResponses: toolResponses });
+             } catch (e) {
+               console.error("Error sending tool response:", e);
+             }
+          }
+        }
+
+        if (message.serverContent?.interrupted && clientWs.readyState === 1) {
+           clientWs.send(JSON.stringify({ interrupted: true }));
+        }
+      },
+      onclose: (event: any) => {
+         sessionClosed = true;
+         const closeCode = Number(event?.code || 0);
+         const closeReason = String(event?.reason || "");
+         console.log("Gemini session closed", {
+           model: liveSessionOptions?.model,
+           apiVersion: activeLiveApiVersion,
+           code: closeCode,
+           reason: closeReason,
+           wasClean: event?.wasClean,
+         });
+         if (!isInitialConnecting && !clientClosed) {
+           scheduleGeminiReconnect(closeReason, closeCode);
+         }
+      },
+      onerror: (error: any) => {
+         sessionClosed = true;
+         const errText = error instanceof Error ? error.message : String(error?.message || error || "Unknown error");
+         console.error("Gemini session error:", liveSessionOptions?.model, activeLiveApiVersion, errText);
+         if (isInitialConnecting || clientClosed) return;
+         if (clientWs.readyState === 1) {
+           if (isInvalidKeyError(errText)) {
+             clientWs.send(JSON.stringify({
+               type: 'error',
+               message: 'API Key ส่วนตัว (BYOK) ไม่ถูกต้องหรือหมดอายุ กรุณาตรวจสอบคีย์ในหน้าตั้งค่า BYOK ครับ'
+             }));
+             setTimeout(() => { try { clientWs.close(); } catch {} }, 300);
+             return;
+           }
+           clientWs.send(JSON.stringify({ type: 'status', message: 'สาย AI หลุดชั่วคราว กำลังเชื่อมต่อใหม่...' }));
+         }
+         scheduleGeminiReconnect(errText);
+      }
+    };
+
+    const scheduleGeminiReconnect = (errReason?: string, closeCode?: number) => {
+      if (isInitialConnecting || clientClosed || clientWs.readyState !== 1 || upstreamReconnectTimer) return;
+
+      if (errReason && isInvalidKeyError(errReason)) {
+        clientWs.send(JSON.stringify({
+          type: 'error',
+          message: 'API Key ส่วนตัว (BYOK) ไม่ถูกต้อง หมดอายุ หรือถูกยกเลิกแล้ว กรุณาตรวจสอบคีย์ในหน้าตั้งค่า BYOK ครับ'
+        }));
+        setTimeout(() => { try { clientWs.close(); } catch {} }, 300);
+        return;
+      }
+
+      if (upstreamReconnectAttempts >= 6) {
+        clientWs.send(JSON.stringify({
+          type: 'error',
+          message: 'การเชื่อมต่อสาย AI ถูกตัดชั่วคราว กรุณากดเริ่มสนทนาใหม่อีกครั้งครับ'
+        }));
+        setTimeout(() => { try { clientWs.close(); } catch {} }, 300);
+        return;
+      }
+
+      if (errReason && isQuotaOrRateLimitError(errReason)) {
+        triggerLiveTpmFallback(errReason);
+      } else if (
+        closeCode === 1008 ||
+        (errReason && isLiveModelCompatError(errReason))
+      ) {
+        if (!primaryModelUnavailableForSession && liveSessionOptions?.model === LIVE_PRIMARY_MODEL) {
+          primaryModelUnavailableForSession = true;
+          liveFallbackIdx = 0;
+        } else if (liveFallbackIdx + 1 < LIVE_TPM_FALLBACK_MODELS.length) {
+          liveFallbackIdx += 1;
+        }
+        if (liveSessionOptions) {
+          liveSessionOptions.model = getActiveLiveModel();
+        }
+      } else if (liveSessionOptions) {
+        liveSessionOptions.model = getActiveLiveModel();
+      }
+
+      const delay = Math.min(1000 + upstreamReconnectAttempts * 1000, 6000);
       upstreamReconnectAttempts += 1;
       if (clientWs.readyState === 1) {
-        clientWs.send(JSON.stringify({ type: 'status', message: 'AI live session reconnecting in the background...' }));
+        clientWs.send(JSON.stringify({ type: 'status', message: 'กำลังเชื่อมต่อสาย AI ใหม่อัตโนมัติ...' }));
       }
       upstreamReconnectTimer = setTimeout(async () => {
         upstreamReconnectTimer = null;
-        if (clientWs.readyState !== 1) return;
+        if (clientClosed || clientWs.readyState !== 1) return;
         try {
           sessionClosed = true;
+          const activeModel = getActiveLiveModel();
+          liveSessionOptions = {
+            model: activeModel,
+            callbacks: liveCallbacks,
+            config: buildLiveConnectConfig(),
+          };
+          sessionAi = getLiveClientForVersion(activeLiveApiVersion);
           session = await sessionAi.live.connect(liveSessionOptions);
+          if (clientClosed || clientWs.readyState !== 1) {
+            try { session.close(); } catch {}
+            return;
+          }
           sessionClosed = false;
           upstreamReconnectAttempts = 0;
           sendSavedDocumentContext();
           if (clientWs.readyState === 1) {
-            clientWs.send(JSON.stringify({ type: 'status', message: 'AI live session reconnected.' }));
+            clientWs.send(JSON.stringify({ type: 'ready', model: activeModel }));
+            clientWs.send(JSON.stringify({ type: 'status', message: 'เชื่อมต่อสาย AI กลับมาสำเร็จแล้ว' }));
           }
         } catch (e: any) {
           sessionClosed = true;
-          const errorMsg = e?.message || "";
-          if (!errorMsg.includes("429") && !errorMsg.includes("503") && !errorMsg.includes("Quota") && !errorMsg.includes("RESOURCE_EXHAUSTED") && !errorMsg.includes("UNAVAILABLE")) {
+          const errorMsg = String(e?.message || e || "");
+          if (isInvalidKeyError(e)) {
+            if (clientWs.readyState === 1) {
+              clientWs.send(JSON.stringify({
+                type: 'error',
+                message: 'API Key ส่วนตัว (BYOK) ไม่ถูกต้องหรือหมดอายุ กรุณาตรวจสอบคีย์ในหน้าตั้งค่า BYOK ครับ'
+              }));
+              setTimeout(() => { try { clientWs.close(); } catch {} }, 300);
+            }
+            return;
+          }
+          if (isQuotaOrRateLimitError(e)) {
+            triggerLiveTpmFallback(errorMsg);
+          } else if (isLiveModelCompatError(e)) {
+            if (!primaryModelUnavailableForSession && liveSessionOptions?.model === LIVE_PRIMARY_MODEL) {
+              primaryModelUnavailableForSession = true;
+              liveFallbackIdx = 0;
+            } else if (liveFallbackIdx + 1 < LIVE_TPM_FALLBACK_MODELS.length) {
+              liveFallbackIdx += 1;
+            }
+            liveSessionOptions.model = getActiveLiveModel();
+          } else if (!errorMsg.includes("503") && !errorMsg.includes("UNAVAILABLE")) {
             console.error("Live API reconnect error:", errorMsg || "Reconnect failed");
           }
-          scheduleGeminiReconnect();
+          scheduleGeminiReconnect(errorMsg);
         }
       }, delay);
     };
     try {
       if (!sessionAi) throw new Error("GenAI not initialized");
-      console.log("Connecting to Gemini Live API...");
-      liveSessionOptions = {
-        model: "gemini-3.8-live",
-        callbacks: {
-          onmessage: (message: LiveServerMessage) => {
-            const serverContent = (message as any).serverContent;
-            
-            // 1. Audio Output
-            const parts = serverContent?.modelTurn?.parts;
-            if (parts && clientWs.readyState === 1) {
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
-                }
-              }
-            }
 
-            // 2. Output Transcription (AI's speech to text)
-            const outTrans = serverContent?.outputTranscription;
-            if (outTrans?.text && outTrans.text.trim() && clientWs.readyState === 1) {
-              console.log("AI Transcription:", outTrans.text);
-              clientWs.send(JSON.stringify({ type: 'transcript', role: 'model', text: outTrans.text }));
-              addTranscriptChunk('model', outTrans.text);
-            }
+      // Try Live-only models on v1beta first (then v1alpha if needed).
+      // STRICT 0-COST GUARD: getLiveClientForVersion uses ONLY the customer's BYOK key when isByokLiveSession === true.
+      const liveModelsToTry = Array.from(
+        new Set<string>([LIVE_PRIMARY_MODEL, ...LIVE_TPM_FALLBACK_MODELS])
+      );
+      const connectionAttempts: Array<{ model: string; apiVersion: "v1beta" | "v1alpha" }> = [
+        ...liveModelsToTry.map((model) => ({ model, apiVersion: "v1beta" as const })),
+        { model: LIVE_PRIMARY_MODEL, apiVersion: "v1alpha" as const },
+        { model: LIVE_TPM_FALLBACK_MODELS[0], apiVersion: "v1alpha" as const },
+      ];
 
-            // 3. Input Transcription (User's speech to text)
-            const inTrans = serverContent?.inputTranscription;
-            if (inTrans?.text && inTrans.text.trim() && clientWs.readyState === 1) {
-              console.log("User Transcription:", inTrans.text);
-              clientWs.send(JSON.stringify({ type: 'transcript', role: 'user', text: inTrans.text }));
-              addTranscriptChunk('user', inTrans.text);
-            }
+      let connectedSession: any = null;
+      let lastConnectErr: any = null;
 
-            // Tool Call response
-            if (message.toolCall && message.toolCall.functionCalls) {
-              const toolResponses: any[] = [];
-              for (const call of message.toolCall.functionCalls) {
-                if (call.name === 'update_board') {
-                  if (clientWs.readyState === 1) {
-                    clientWs.send(JSON.stringify({ type: 'board_update', data: call.args }));
-                  }
-                  toolResponses.push({ 
-                    id: call.id, 
-                    name: call.name, 
-                    response: { result: "Board successfully updated and shown to user." } 
-                  });
-                } else if (call.name === 'complete_mission_objective') {
-                  const objIdx = Number((call.args as any)?.objectiveIndex);
-                  const reason = String((call.args as any)?.reason || '');
-                  if (objIdx >= 1 && objIdx <= 3 && clientWs.readyState === 1) {
-                    console.log(`[Roleplay] Objective #${objIdx} completed: ${reason}`);
-                    clientWs.send(JSON.stringify({
-                      type: 'roleplay_objective_completed',
-                      objectiveIndex: objIdx,
-                      reason
-                    }));
-                  }
-                  toolResponses.push({
-                    id: call.id,
-                    name: call.name,
-                    response: { result: `Objective ${objIdx} marked as completed on the learner's checklist. Continue staying in character naturally.` }
-                  });
-                } else if (call.name === 'memorize_info') {
-                  const info = (call.args as any)?.memoryText as string;
-                  if (info && !isRoleplayMode) {
-                     userMemory.push(info);
-                     // limit memory size to prevent context overflow (keep last 20)
-                     if (userMemory.length > 20) userMemory.shift();
-                     sessionMemoryStore.set(cacheKey, userMemory);
-                     console.log(`Memorized for ${cacheKey}:`, info);
-
-                     // Write to Firestore if logged in
-                     if (db && userId) {
-                       db.doc(`users/${userId}/memory/${targetLang}`).set({
-                         memories: userMemory,
-                         updatedAt: Date.now()
-                       }, { merge: true }).catch(err => {
-                         console.error("Failed to save memory to Firestore:", err);
-                       });
-                     }
-                  }
-                  toolResponses.push({ 
-                    id: call.id, 
-                    name: call.name, 
-                    response: { result: "Information memorized successfully." } 
-                  });
-                }
-              }
-              if (toolResponses.length > 0) {
-                 try {
-                   session.sendToolResponse({ functionResponses: toolResponses });
-                 } catch (e) {
-                   console.error("Error sending tool response:", e);
-                 }
-              }
-            }
-
-            if (message.serverContent?.interrupted && clientWs.readyState === 1) {
-               clientWs.send(JSON.stringify({ interrupted: true }));
-            }
-          },
-          onclose: (event: any) => {
-             sessionClosed = true;
-             console.log("Gemini session closed", {
-               code: event?.code,
-               reason: event?.reason,
-               wasClean: event?.wasClean,
-             });
-             scheduleGeminiReconnect();
-          },
-          onerror: (error: any) => {
-             sessionClosed = true;
-             console.error("Gemini session error:", error instanceof Error ? error.message : "Unknown error");
-             if (clientWs.readyState === 1) {
-                 clientWs.send(JSON.stringify({ type: 'error', message: 'AI live session disconnected. Reconnecting...' }));
-             }
-             scheduleGeminiReconnect();
+      for (let i = 0; i < connectionAttempts.length; i++) {
+        if (clientClosed || clientWs.readyState !== 1) break;
+        const { model: candidateModel, apiVersion: candidateVersion } = connectionAttempts[i];
+        activeLiveApiVersion = candidateVersion;
+        sessionAi = getLiveClientForVersion(candidateVersion);
+        liveSessionOptions = {
+          model: candidateModel,
+          callbacks: liveCallbacks,
+          config: buildLiveConnectConfig(),
+        };
+        try {
+          console.log(`[Live Connect] Trying ${candidateModel} (${candidateVersion}, BYOK: ${isByokLiveSession})...`);
+          connectedSession = await sessionAi.live.connect(liveSessionOptions);
+          if (candidateModel !== LIVE_PRIMARY_MODEL) {
+            const fbIndex = LIVE_TPM_FALLBACK_MODELS.indexOf(candidateModel as any);
+            if (fbIndex >= 0) liveFallbackIdx = fbIndex;
           }
-        },
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          outputAudioTranscription: { languageCode: targetLang === 'CN' ? 'zh-CN' : targetLang === 'TH' ? 'th-TH' : 'en-US' },
-          inputAudioTranscription: {
-            languageCode: isRoleplayMode
-              ? (targetLang === 'CN' ? 'zh-CN' : 'en-US')
-              : (spokenLang === 'Chinese' ? 'zh-CN' : spokenLang === 'Thai' ? 'th-TH' : 'en-US')
-          },
-
-          tools: [{
-            functionDeclarations: [
-              {
-                name: "update_board",
-                description: "Update the shared whiteboard screen to display vocabulary, grammar, sentences, helpful reply hints, or gentle corrections to the user.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    items: {
-                      type: Type.ARRAY,
-                      description: "List of items to display on the board. Keep each coherent sentence/phrase together in a single item so the board remains tidy and readable.",
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          word: { type: Type.STRING, description: "The word, full sentence, reply hint, or grammar point" },
-                          pinyin: { type: Type.STRING, description: "Pronunciation or pinyin (if applicable, separate with spaces for sentences)" },
-                          meaning: { type: Type.STRING, description: "Translation or meaning in Thai and/or English" },
-                          example: { type: Type.STRING, description: "Example sentence (optional)" }
-                        },
-                        required: ["word", "meaning"]
-                      }
-                    }
-                  },
-                  required: ["items"]
-                }
-              },
-              ...(isRoleplayMode
-                ? [
-                    {
-                      name: "complete_mission_objective",
-                      description: "Mark one of the learner's 3 Roleplay Mission objectives (1, 2, or 3) as completed in real time as soon as the learner achieves it in the conversation.",
-                      parameters: {
-                        type: Type.OBJECT,
-                        properties: {
-                          objectiveIndex: {
-                            type: Type.INTEGER,
-                            description: "The objective number completed: 1, 2, or 3"
-                          },
-                          reason: {
-                            type: Type.STRING,
-                            description: "Brief note on how the learner completed this objective"
-                          }
-                        },
-                        required: ["objectiveIndex"]
-                      }
-                    }
-                  ]
-                : [
-                    {
-                      name: "memorize_info",
-                      description: "Memorize important details about the user, their name, what they are wearing/showing via the camera, their preferences, and the conversation details.",
-                      parameters: {
-                        type: Type.OBJECT,
-                        properties: {
-                          memoryText: { type: Type.STRING, description: "Information to summarize and remember, e.g., 'ผู้ใช้ชื่อออฟ มีแมว 1 ตัว ชอบเรียนเรื่องสถานที่'" }
-                        },
-                        required: ["memoryText"]
-                      }
-                    }
-                  ])
-            ]
-          }],
-          speechConfig: {
-             voiceConfig: { prebuiltVoiceConfig: { voiceName } },
-             languageCode: targetLang === 'CN' ? 'zh' : targetLang === 'TH' ? 'th' : 'en'
+          console.log(`[Live Connect] Connected successfully with ${candidateModel} (${candidateVersion})`);
+          break;
+        } catch (connectErr: any) {
+          lastConnectErr = connectErr;
+          const errStr = String(connectErr?.message || connectErr || "");
+          console.warn(`[Live Connect] ${candidateModel} (${candidateVersion}) failed: ${errStr}`);
+          if (isInvalidKeyError(connectErr)) {
+            throw connectErr;
           }
-        },
-      };
-      session = await sessionAi.live.connect(liveSessionOptions);
+          if (isQuotaOrRateLimitError(connectErr)) {
+            triggerLiveTpmFallback(errStr);
+            continue;
+          }
+          if (isLiveModelCompatError(connectErr) && candidateModel === LIVE_PRIMARY_MODEL && candidateVersion === "v1beta") {
+            primaryModelUnavailableForSession = true;
+            continue;
+          }
+          continue;
+        }
+      }
+
+      if (!connectedSession) {
+        throw lastConnectErr || new Error("ไม่สามารถเชื่อมต่อ Gemini Live API ได้");
+      }
+
+      if (clientClosed || clientWs.readyState !== 1) {
+        try { connectedSession.close(); } catch {}
+        return;
+      }
+
+      isInitialConnecting = false;
+      session = connectedSession;
+      sessionClosed = false;
+      clientWs.send(JSON.stringify({ type: 'ready', model: liveSessionOptions.model }));
 
       const askWord = url.searchParams.get('askWord');
       
@@ -2118,12 +2674,24 @@ CRITICAL INSTRUCTIONS:
       }
 
     } catch (e: any) {
-      const errorMsg = e?.message || "";
-      if (!errorMsg.includes("429") && !errorMsg.includes("503") && !errorMsg.includes("Quota") && !errorMsg.includes("RESOURCE_EXHAUSTED") && !errorMsg.includes("UNAVAILABLE")) {
-         console.error("Live API init error:", errorMsg || "Connection failed");
+      isInitialConnecting = false;
+      const errorMsg = String(e?.message || e || "");
+      const sanitizedDetail = errorMsg.replace(/AIza[0-9A-Za-z_-]+/g, '[KEY]').slice(0, 140);
+      console.error("[Live API init error]:", sanitizedDetail || "Connection failed");
+      let friendlyMsg = `ไม่สามารถเชื่อมต่อสาย AI ได้ในขณะนี้ (${sanitizedDetail || 'Connection failed'}) กรุณาลองกดเริ่มสนทนาใหม่อีกครั้ง`;
+      if (isInvalidKeyError(e)) {
+        friendlyMsg = isByokLiveSession
+          ? "API Key ส่วนตัว (BYOK) ไม่ถูกต้อง หมดอายุ หรือถูกยกเลิกแล้ว กรุณาตรวจสอบคีย์ในหน้าตั้งค่า BYOK ครับ"
+          : "ระบบ AI ของเซิร์ฟเวอร์มีปัญหาเรื่อง API Key กรุณาติดต่อผู้ดูแลระบบ";
+      } else if (isQuotaOrRateLimitError(e)) {
+        friendlyMsg = isByokLiveSession
+          ? "Google API Key ส่วนตัว (BYOK) ใช้งานครบโควตา Live API ชั่วคราวแล้ว กรุณารอสัก 1 นาทีแล้วลองคอลใหม่ครับ"
+          : "โควตาการใช้งาน AI เต็มชั่วคราว กรุณารอสักครู่แล้วลองใหม่ครับ";
       }
-      clientWs.send(JSON.stringify({ type: 'error', message: 'โควต้าการใช้งาน AI เต็มหรือระบบขัดข้อง กรุณาลองใหม่ภายหลัง' }));
-      setTimeout(() => clientWs.close(), 1000);
+      if (clientWs.readyState === 1) {
+        clientWs.send(JSON.stringify({ type: 'error', message: friendlyMsg }));
+        setTimeout(() => { try { clientWs.close(); } catch {} }, 500);
+      }
       return;
     }
 
@@ -2304,6 +2872,7 @@ CRITICAL: Immediately explain this word primarily in ENGLISH! Provide English de
     });
 
     clientWs.on("close", (code, reason) => {
+      clientClosed = true;
       clearInterval(pingInterval);
       if (upstreamReconnectTimer) {
         clearTimeout(upstreamReconnectTimer);
@@ -2364,12 +2933,17 @@ ${dialogueHistory.map(line => `${line.role === 'user' ? 'ผู้เรีย�
 - ใช้ภาษาไทยในการอธิบายเป็นหลัก และเขียนภาษา${targetLang === 'CN' ? 'จีนหรืออังกฤษ' : 'อังกฤษหรือจีน'}เป็นตัวอย่างคำศัพท์ที่ได้เรียน
 - ห้ามเกริ่นคำอธิบายอื่นๆ ให้ตอบเฉพาะตัวข้อความโน้ตสรุปที่คุณจะส่งให้ผู้เรียนเท่านั้น`;
 
-            const summaryResponse = await sessionAi.models.generateContent({
-              model: "gemini-3.8-flash",
-              contents: prompt
+            const summaryRes = await generateContentWithByokFallback({
+              contents: prompt,
+              useByokQuota: isByokLiveSession,
+              strictByokOnly: isByokLiveSession,
+              byokKey: isByokLiveSession ? cleanLiveByokKey : null,
+              byokProfile: "flash_lite",
+              serverDefaultModel: "gemini-3.8-flash",
+              getServerClient: isByokLiveSession ? undefined : getServerGeminiClient,
             });
 
-            const callSummaryText = summaryResponse.text;
+            const callSummaryText = summaryRes.text;
             if (callSummaryText && callSummaryText.trim()) {
               // Fetch latest text chat session for targetLang
               const chatSnap = await db.collection(`users/${userId}/chat_sessions`)

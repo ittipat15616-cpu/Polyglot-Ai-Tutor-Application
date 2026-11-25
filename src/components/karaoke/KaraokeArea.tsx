@@ -17,6 +17,7 @@ import {
   Flame,
   Clock,
   Trash2,
+  LogIn,
 } from 'lucide-react';
 import {
   CURATED_SONGS,
@@ -56,6 +57,7 @@ import {
 } from '../../services/byokService';
 import { deductCredit } from '../../services/subscriptionService';
 import { auth } from '../../firebase';
+import { openLoginModal } from '../../services/authHeaders';
 import ByokQuotaFallbackModal, { QuotaFallbackReason } from '../ByokQuotaFallbackModal';
 import KaraokeStudio from './KaraokeStudio';
 
@@ -115,6 +117,8 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
   // Loading & Translation Pipeline State
   const [loadingStage, setLoadingStage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState<boolean>(false);
+  const [studioByokNotice, setStudioByokNotice] = useState<string | null>(null);
 
   // Manual LRC Retry Modal (if a random YouTube clip had no exact LRCLIB match)
   const [missingLrcJob, setMissingLrcJob] = useState<PendingTranslationJob | null>(null);
@@ -136,6 +140,8 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
     setYtResults([]);
     setYtError(null);
     setLoadError(null);
+    setNeedsLogin(false);
+    setStudioByokNotice(null);
     setMissingLrcJob(null);
     setDifficultyFilter('all');
     setMoodFilter('all');
@@ -275,6 +281,14 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
     mode: 'curated_free' | 'byok_free' | 'paid_credits'
   ) => {
     setLoadError(null);
+    setNeedsLogin(false);
+
+    if (!auth.currentUser) {
+      setLoadingStage(null);
+      setNeedsLogin(true);
+      setLoadError('กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI แปลเพลงใหม่หรือใช้สิทธิ์ BYOK ครับ');
+      return;
+    }
 
     if (mode === 'paid_credits') {
       const { success } = await deductCredit('karaoke_translate');
@@ -295,7 +309,13 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
 
       if (mode === 'byok_free' && !result.cached) {
         await consumeByokFreeQuota('karaoke_translate');
-        setByokQuota(getByokQuotaStatus('karaoke_translate'));
+        const nextQuota = getByokQuotaStatus('karaoke_translate');
+        setByokQuota(nextQuota);
+        setStudioByokNotice(
+          `ใช้สิทธิ์ฟรี BYOK แปลเพลงใหม่สำเร็จ (0 เครดิต) • สิทธิ์แปลเพลงใหม่วันนี้เหลือ ${nextQuota.remaining}/${nextQuota.limit} เพลง`
+        );
+      } else {
+        setStudioByokNotice(null);
       }
 
       setCachedKeys((prev) => {
@@ -312,7 +332,12 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
         }, 600);
       }
     } catch (err: any) {
-      if (mode === 'byok_free' && (err?.byokQuotaExhausted || err?.status === 429)) {
+      if (err?.authRequired || (err?.status === 401 && !err?.byokInvalidKey)) {
+        setNeedsLogin(true);
+        setLoadError(err?.message || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI แปลเพลงใหม่ครับ');
+        return;
+      }
+      if (mode === 'byok_free' && (err?.byokQuotaExhausted || err?.byokInvalidKey || err?.status === 429)) {
         setPendingCreditJob(job);
         setFallbackModal({ open: true, reason: 'byok_google_429' });
         return;
@@ -339,7 +364,15 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
       return;
     }
 
-    // Curated 100 songs: ALWAYS FREE for all users (as promised: "คลังเพลงในระบบฟรีทุกคน")
+    // Any uncached song requires AI translation -> require Google Sign-In first
+    if (!auth.currentUser) {
+      setLoadingStage(null);
+      setNeedsLogin(true);
+      setLoadError('เพลงนี้ยังไม่เคยแปลในระบบ กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนให้ AI แปลเพลงใหม่หรือใช้สิทธิ์ BYOK ครับ');
+      return;
+    }
+
+    // Curated 100 songs: ALWAYS FREE for signed-in users (as promised: "คลังเพลงในระบบฟรีทุกคน")
     if (job.isCurated) {
       await runTranslationJob(job, 'curated_free');
       return;
@@ -363,6 +396,8 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
 
   const openCuratedSong = async (song: CuratedSong) => {
     setLoadError(null);
+    setNeedsLogin(false);
+    setStudioByokNotice(null);
     setLoadingStage(`กำลังเปิดเพลง "${song.title}"...`);
     try {
       const res = await resolveKaraokeSong({
@@ -400,6 +435,8 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
 
   const openYouTubeSong = async (item: YouTubeSearchResult) => {
     setLoadError(null);
+    setNeedsLogin(false);
+    setStudioByokNotice(null);
     setLoadingStage(`กำลังค้นหาเนื้อเพลง Synced LRC สำหรับ "${item.title}"...`);
     try {
       const res = await resolveKaraokeSong({
@@ -522,6 +559,7 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
       <KaraokeStudio
         song={activeSong}
         isFavorite={favoriteKeySet.has(activeSong.songKey)}
+        byokNotice={studioByokNotice}
         onToggleFavorite={() =>
           handleToggleFav({
             songKey: activeSong.songKey,
@@ -536,6 +574,8 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
         }
         onBack={() => {
           setActiveSong(null);
+          setStudioByokNotice(null);
+          setByokQuota(getByokQuotaStatus('karaoke_translate'));
           loadKaraokeHistory().then(setHistory);
           refreshCommunitySongs().catch(() => {});
         }}
@@ -613,7 +653,7 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
                       onClick={() => window.dispatchEvent(new CustomEvent('open-byok-modal'))}
                       className="text-indigo-600 font-bold hover:underline"
                     >
-                      หรือเชื่อม BYOK ฟรี 3 เพลง/วัน
+                      หรือเชื่อม BYOK ฟรี {byokQuota.limit} เพลง/วัน
                     </button>
                   </div>
                 )}
@@ -657,11 +697,30 @@ export const KaraokeArea: React.FC<KaraokeAreaProps> = ({ activeLang }) => {
           </form>
 
           {loadError && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center justify-between gap-2">
-              <span>{loadError}</span>
-              <button type="button" onClick={() => setLoadError(null)} className="text-rose-500 hover:text-rose-800">
-                <X size={15} />
-              </button>
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex flex-wrap items-center justify-between gap-2">
+              <span className="flex-1 min-w-0">{loadError}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                {needsLogin && (
+                  <button
+                    type="button"
+                    onClick={() => openLoginModal()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs"
+                  >
+                    <LogIn size={13} />
+                    <span>เข้าสู่ระบบด้วย Google</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoadError(null);
+                    setNeedsLogin(false);
+                  }}
+                  className="text-rose-500 hover:text-rose-800"
+                >
+                  <X size={15} />
+                </button>
+              </div>
             </div>
           )}
         </div>

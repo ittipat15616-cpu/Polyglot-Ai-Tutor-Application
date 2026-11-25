@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { KaraokeLanguage, KaraokeLine, KaraokeVocabItem } from '../../types/karaoke';
 import { Volume2, Play, BookOpen, Loader2 } from 'lucide-react';
+import SaveToWordbookButton from '../wordbook/SaveToWordbookButton';
 
 interface KaraokeVocabDeckProps {
   vocabDeck: KaraokeVocabItem[];
   lines: KaraokeLine[];
   language: KaraokeLanguage;
+  songTitle?: string;
   onSeekToTime?: (timeSec: number) => void;
 }
 
@@ -13,6 +15,7 @@ export const KaraokeVocabDeck: React.FC<KaraokeVocabDeckProps> = ({
   vocabDeck,
   lines,
   language,
+  songTitle,
   onSeekToTime,
 }) => {
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
@@ -105,19 +108,33 @@ export const KaraokeVocabDeck: React.FC<KaraokeVocabDeckProps> = ({
                   <div className="text-sm font-bold text-slate-800 mt-1">{item.meaningTh}</div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => speakWord(item.word, idx)}
-                  disabled={speakingIdx === idx}
-                  className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 transition-all ${
-                    speakingIdx === idx
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-200'
-                  }`}
-                  title="ฟังเสียงอ่าน"
-                >
-                  {speakingIdx === idx ? <Loader2 size={16} className="animate-spin" /> : <Volume2 size={16} />}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <SaveToWordbookButton
+                    word={item.word}
+                    lang={isChinese ? 'CN' : 'EN'}
+                    meaningTh={item.meaningTh}
+                    reading={item.reading}
+                    partOfSpeech={item.partOfSpeech}
+                    example={item.exampleLine}
+                    source="karaoke"
+                    sourceLabel={songTitle ? `เพลง ${songTitle}` : 'คาราโอเกะ'}
+                    size="xs"
+                    compactLabel
+                  />
+                  <button
+                    type="button"
+                    onClick={() => speakWord(item.word, idx)}
+                    disabled={speakingIdx === idx}
+                    className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 transition-all ${
+                      speakingIdx === idx
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-200'
+                    }`}
+                    title="ฟังเสียงอ่าน"
+                  >
+                    {speakingIdx === idx ? <Loader2 size={16} className="animate-spin" /> : <Volume2 size={16} />}
+                  </button>
+                </div>
               </div>
 
               {item.noteTh && (

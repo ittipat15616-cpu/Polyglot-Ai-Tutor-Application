@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { HskTestStructure, QuestionPart } from '../data/hskTestStructures';
-import { CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Key } from 'lucide-react';
+import { ByokQuotaStatus, getByokQuotaStatus } from '../services/byokService';
 
 export interface TestResultData {
   totalScore: number;
@@ -23,11 +24,14 @@ export interface TestResultData {
 interface MockTestResultProps {
   structure: HskTestStructure;
   resultData: TestResultData;
+  usedByok?: boolean;
+  byokQuota?: ByokQuotaStatus;
   onClose: () => void;
 }
 
-export default function MockTestResult({ structure, resultData, onClose }: MockTestResultProps) {
+export default function MockTestResult({ structure, resultData, usedByok, byokQuota, onClose }: MockTestResultProps) {
   const [expandedQ, setExpandedQ] = useState<string | null>(null);
+  const liveQuota = byokQuota || getByokQuotaStatus('mock_test');
 
   const renderScoreBar = (label: string, score: number, max: number, colorClass: string) => {
     const percentage = Math.round((score / max) * 100);
@@ -64,6 +68,20 @@ export default function MockTestResult({ structure, resultData, onClose }: MockT
             {resultData.parts.listening && renderScoreBar('พาร์ทการฟัง', resultData.parts.listening.score, resultData.parts.listening.max, 'bg-indigo-500')}
             {resultData.parts.reading && renderScoreBar('พาร์ทการอ่าน', resultData.parts.reading.score, resultData.parts.reading.max, 'bg-orange-500')}
             {resultData.parts.writing && renderScoreBar('พาร์ทการเขียน', resultData.parts.writing.score, resultData.parts.writing.max, 'bg-green-500')}
+            {(usedByok || liveQuota.hasKey) && (
+              <div className={`mt-4 px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${
+                liveQuota.canUseFree
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
+              }`}>
+                <Key size={14} className="shrink-0" />
+                <span>
+                  {usedByok
+                    ? `ตรวจพาร์ทเขียนด้วย AI สำเร็จ (สิทธิ์ฟรี BYOK) • สิทธิ์ตรวจข้อสอบวันนี้เหลือ ${liveQuota.remaining}/${liveQuota.limit} ครั้ง`
+                    : `สิทธิ์ฟรี BYOK ตรวจข้อสอบวันนี้: เหลือ ${liveQuota.remaining}/${liveQuota.limit} ครั้ง`}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

@@ -1,3 +1,5 @@
+import { getFirebaseAuthHeaders } from '../services/authHeaders';
+
 export interface AiGradingResult {
   transcript?: string;
   bandScore: number;
@@ -36,9 +38,7 @@ Provide the result strictly in this JSON format (no markdown tags):
 
   const res = await fetch('/api/grade-writing', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: await getFirebaseAuthHeaders(),
     body: JSON.stringify({
       prompt,
       examId,
@@ -51,6 +51,8 @@ Provide the result strictly in this JSON format (no markdown tags):
   if (!res.ok) {
     const err: any = new Error(data.error || 'Grading failed');
     err.status = res.status;
+    err.byokInvalidKey = Boolean(data.byokInvalidKey);
+    err.authRequired = Boolean(data.authRequired || (res.status === 401 && !data.byokInvalidKey));
     err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
     throw err;
   }
@@ -79,9 +81,7 @@ export async function gradeSpeaking(
   const audioDataArray = await Promise.all(audioDataPromises);
   const res = await fetch('/api/grade-speaking', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: await getFirebaseAuthHeaders(),
     body: JSON.stringify({
       audios: audioDataArray,
       examId,
@@ -94,6 +94,8 @@ export async function gradeSpeaking(
   if (!res.ok) {
     const err: any = new Error(data.error || 'Grading failed');
     err.status = res.status;
+    err.byokInvalidKey = Boolean(data.byokInvalidKey);
+    err.authRequired = Boolean(data.authRequired || (res.status === 401 && !data.byokInvalidKey));
     err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
     throw err;
   }

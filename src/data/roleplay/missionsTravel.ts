@@ -1,4 +1,6 @@
 import { RoleplayMission } from './types';
+import { TRAVEL_MISSIONS_PART2 } from './missionsTravelPart2';
+import { TRAVEL_MISSIONS_PART3 } from './missionsTravelPart3';
 
 export const TRAVEL_MISSIONS: RoleplayMission[] = [
   {
@@ -667,4 +669,6 @@ export const TRAVEL_MISSIONS: RoleplayMission[] = [
       { en: 'Could I have written confirmation that there will be no extra charges?', cn: '请问能给我一份书面确认，证明之后不会再扣额外费用吗？', pinyin: 'Qǐngwèn néng gěi wǒ yí fèn shūmiàn quèrèn, zhèngmíng zhīhòu búhuì zài kòu éwài fèiyòng ma?', th: 'ขอเอกสารยืนยันเป็นลายลักษณ์อักษรว่าจะไม่ถูกหักเงินเพิ่มภายหลังได้ไหมครับ' },
     ],
   },
+  ...TRAVEL_MISSIONS_PART2,
+  ...TRAVEL_MISSIONS_PART3,
 ];

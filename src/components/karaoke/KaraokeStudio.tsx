@@ -14,7 +14,17 @@ import {
   Search,
   SlidersHorizontal,
   Check,
+  Key,
+  LogIn,
 } from 'lucide-react';
+import { auth } from '../../firebase';
+import { openLoginModal } from '../../services/authHeaders';
+import {
+  consumeByokFreeQuota,
+  getByokQuotaStatus,
+  getResetTimeLabelThai,
+  getStoredByokKey,
+} from '../../services/byokService';
 import {
   KaraokeLine,
   KaraokeSongData,
@@ -22,6 +32,7 @@ import {
   WordExplainResult,
 } from '../../types/karaoke';
 import { allCNVocab, allENVocab } from '../../data/vocabData';
+import SaveToWordbookButton from '../wordbook/SaveToWordbookButton';
 import {
   explainKaraokeWord,
   loadSongSyncOffset,
@@ -40,6 +51,7 @@ type StudioMode = 'sing' | 'quiz' | 'vocab';
 interface KaraokeStudioProps {
   song: KaraokeSongData;
   isFavorite: boolean;
+  byokNotice?: string | null;
   onToggleFavorite: () => void;
   onBack: () => void;
   onSongUpdated?: (updatedSong: KaraokeSongData) => void;
@@ -74,6 +86,7 @@ function parseLrcLinesClient(lrcText: string, durationSec = 240): Array<{ timeSe
 export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
   song,
   isFavorite,
+  byokNotice,
   onToggleFavorite,
   onBack,
   onSongUpdated,
@@ -87,10 +100,16 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
   const [showThai, setShowThai] = useState<boolean>(true);
   const [showPinyin, setShowPinyin] = useState<boolean>(true);
   const [loopLineIndex, setLoopLineIndex] = useState<number | null>(null);
+  const [showByokBanner, setShowByokBanner] = useState<boolean>(Boolean(byokNotice));
 
   // Tap-to-Explain Popover State
   const [selectedWord, setSelectedWord] = useState<{ word: string; lineText: string } | null>(null);
   const [wordExplain, setWordExplain] = useState<WordExplainResult | null>(null);
+  const [wordExplainNeedsLogin, setWordExplainNeedsLogin] = useState<boolean>(false);
+  const [wordExplainNeedsByok, setWordExplainNeedsByok] = useState<boolean>(false);
+  const [explainQuota, setExplainQuota] = useState(() => getByokQuotaStatus('karaoke_explain'));
+  const wordExplainCacheRef = useRef<Map<string, WordExplainResult>>(new Map());
+  const lastAiExplainAtRef = useRef<number>(0);
   const [isExplainingWord, setIsExplainingWord] = useState<boolean>(false);
   const [isSpeakingWord, setIsSpeakingWord] = useState<boolean>(false);
 
@@ -102,6 +121,10 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
   const [isRetranslatingLrc, setIsRetranslatingLrc] = useState<boolean>(false);
 
   const isChinese = currentSong.language === 'zh';
+
+  useEffect(() => {
+    setShowByokBanner(Boolean(byokNotice));
+  }, [byokNotice]);
 
   // Load saved per-song sync offset + record history on mount
   useEffect(() => {
@@ -189,6 +212,7 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
     if (!cleanWord) return;
     setSelectedWord({ word: cleanWord, lineText });
     setWordExplain(null);
+    setWordExplainNeedsLogin(false);
     setIsExplainingWord(false);
 
     // 1. Check pre-extracted Song Vocab Deck first (instant 0-cost)
@@ -224,16 +248,101 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
   };
 
   const fetchAiWordExplanation = async (word: string, lineText: string) => {
+    setWordExplainNeedsLogin(false);
+    setWordExplainNeedsByok(false);
+
+    if (!auth.currentUser) {
+      setWordExplainNeedsLogin(true);
+      setWordExplain({
+        word,
+        meaningTh: 'ต้องเข้าสู่ระบบด้วย Google ก่อนใช้ AI อธิบายคำศัพท์',
+        contextExplanationTh:
+          'กรุณาเข้าสู่ระบบด้วยบัญชี Google เพื่อเปิดใช้งานผู้ช่วย AI อธิบายบริบทคำศัพท์ (คลังศัพท์เด่นและพจนานุกรมในระบบยังดูได้ฟรี)',
+      });
+      return;
+    }
+
+    // 1. Instant 0-cost session cache if user tapped the exact same word + line before
+    const cacheKey = `${currentSong.language}::${word.toLowerCase()}::${lineText.trim().slice(0, 60)}`;
+    const cachedHit = wordExplainCacheRef.current.get(cacheKey);
+    if (cachedHit) {
+      setWordExplain(cachedHit);
+      return;
+    }
+
+    // 2. Strictly BYOK-only (0 Baht owner server cost)
+    const latestQuota = getByokQuotaStatus('karaoke_explain');
+    setExplainQuota(latestQuota);
+    if (!latestQuota.hasKey || !getStoredByokKey()) {
+      setWordExplainNeedsByok(true);
+      setWordExplain({
+        word,
+        meaningTh: 'เชื่อมคีย์ฟรี BYOK เพื่อใช้ AI อธิบายคำนอกพจนานุกรม',
+        contextExplanationTh: `คำศัพท์นี้ไม่อยู่ในพจนานุกรมพื้นฐานของแอป เชื่อมคีย์ฟรี Google AI Studio (BYOK) เพื่อปลดล็อก AI อธิบายบริบทคำในเพลงฟรีสูงสุด ${latestQuota.limit} คำ/วัน (0 บาท)`,
+      });
+      return;
+    }
+
+    // 3. Daily 100/day BYOK guard
+    if (!latestQuota.canUseFree) {
+      setWordExplain({
+        word,
+        meaningTh: `ใช้สิทธิ์ AI อธิบายคำในเพลงครบ ${latestQuota.limit}/${latestQuota.limit} คำของวันนี้แล้ว`,
+        contextExplanationTh: `สิทธิ์ฟรีจะรีเซ็ตอัตโนมัติเวลา ${getResetTimeLabelThai()} (คำในคลังศัพท์เด่นและพจนานุกรมในแอปยังเปิดดูได้ฟรีไม่จำกัด)`,
+      });
+      return;
+    }
+
+    // 4. Short 2.5s cooldown to keep well below Google 15 RPM limit
+    const elapsedMs = Date.now() - lastAiExplainAtRef.current;
+    if (elapsedMs < 2500) {
+      const waitSec = Math.ceil((2500 - elapsedMs) / 1000);
+      setWordExplain({
+        word,
+        meaningTh: `กรุณารอสักครู่ (${waitSec} วินาที)`,
+        contextExplanationTh: 'เว้นจังหวะสั้นๆ เพื่อป้องกันการชนลิมิตความเร็วต่อนาที (RPM) ของคีย์ฟรี Google AI Studio แล้วแตะอีกครั้งได้เลยครับ',
+      });
+      return;
+    }
+
+    lastAiExplainAtRef.current = Date.now();
     setIsExplainingWord(true);
     try {
       const res = await explainKaraokeWord(word, lineText, currentSong.language);
+      wordExplainCacheRef.current.set(cacheKey, res);
+      await consumeByokFreeQuota('karaoke_explain');
+      setExplainQuota(getByokQuotaStatus('karaoke_explain'));
       setWordExplain(res);
-    } catch {
-      setWordExplain({
-        word,
-        meaningTh: 'ไม่สามารถโหลดคำอธิบายได้ชั่วคราว',
-        contextExplanationTh: 'กรุณาลองแตะอีกครั้งในภายหลังครับ',
-      });
+    } catch (err: any) {
+      if (err?.authRequired || err?.status === 401) {
+        setWordExplainNeedsLogin(true);
+        setWordExplain({
+          word,
+          meaningTh: 'ต้องเข้าสู่ระบบด้วย Google ก่อนใช้ AI อธิบายคำศัพท์',
+          contextExplanationTh:
+            err?.message || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google เพื่อเปิดใช้งานผู้ช่วย AI อธิบายคำศัพท์ครับ',
+        });
+      } else if (err?.byokRequired || err?.byokInvalidKey) {
+        setWordExplainNeedsByok(true);
+        setWordExplain({
+          word,
+          meaningTh: err?.byokInvalidKey ? 'API Key ส่วนตัว (BYOK) ไม่ถูกต้องหรือหมดอายุ' : 'ต้องเชื่อมคีย์ฟรี BYOK ก่อนใช้ AI อธิบายคำศัพท์',
+          contextExplanationTh:
+            err?.message || 'กรุณาตรวจสอบหรือตั้งค่า Gemini API Key ฟรีในหน้าตั้งค่า BYOK ครับ',
+        });
+      } else if (err?.byokQuotaExhausted || err?.status === 429) {
+        setWordExplain({
+          word,
+          meaningTh: 'คีย์ฟรี BYOK ติดลิมิตความเร็วชั่วคราว (429)',
+          contextExplanationTh: 'กรุณารอประมาณ 15–30 วินาทีแล้วแตะคำนี้อีกครั้งครับ (ไม่ได้หักสิทธิ์ประจำวัน)',
+        });
+      } else {
+        setWordExplain({
+          word,
+          meaningTh: 'ไม่สามารถโหลดคำอธิบายได้ชั่วคราว',
+          contextExplanationTh: err?.message || 'กรุณาลองแตะอีกครั้งในภายหลังครับ',
+        });
+      }
     } finally {
       setIsExplainingWord(false);
     }
@@ -332,8 +441,8 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
     onSongUpdated?.(nextSong);
     setShowLrcPicker(false);
 
-    // If many lines lack Thai translation (e.g., switched from a wrong LRC to the correct song), auto-retranslate cleanly!
-    if (missingTranslationCount / updatedLines.length > 0.3) {
+    // If many lines lack Thai translation (e.g., switched from a wrong LRC to the correct song), auto-retranslate cleanly (signed-in only)
+    if (missingTranslationCount / updatedLines.length > 0.3 && auth.currentUser) {
       setIsRetranslatingLrc(true);
       try {
         const result = await translateKaraokeSong({
@@ -427,6 +536,24 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Live BYOK Remaining Quota Banner after fresh translation */}
+      {showByokBanner && byokNotice && (
+        <div className="bg-emerald-50 border-b border-emerald-200 px-4 sm:px-6 py-2 flex items-center justify-between gap-2 text-xs text-emerald-900 font-bold shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Key size={14} className="text-emerald-600 shrink-0" />
+            <span className="truncate">{byokNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowByokBanner(false)}
+            className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 shrink-0"
+            aria-label="ปิดแถบแจ้งเตือน"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Main Two-Zone Studio Workspace */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-5 lg:p-5 overflow-hidden">
@@ -625,14 +752,56 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
                       ตัวอย่าง: {wordExplain.example}
                     </p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => fetchAiWordExplanation(selectedWord.word, selectedWord.lineText)}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 pt-1"
-                  >
-                    <Sparkles size={12} />
-                    <span>ให้ AI อธิบายเชิงลึกในท่อนนี้</span>
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    {wordExplainNeedsLogin ? (
+                      <button
+                        type="button"
+                        onClick={() => openLoginModal()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs"
+                      >
+                        <LogIn size={13} />
+                        <span>เข้าสู่ระบบด้วย Google</span>
+                      </button>
+                    ) : wordExplainNeedsByok ? (
+                      <button
+                        type="button"
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-byok-modal'))}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                      >
+                        <Key size={13} />
+                        <span>ตั้งค่าคีย์ฟรี BYOK (ฟรี {explainQuota.limit} คำ/วัน)</span>
+                      </button>
+                    ) : (
+                      <>
+                        <SaveToWordbookButton
+                          word={selectedWord.word}
+                          lang={isChinese ? 'CN' : 'EN'}
+                          meaningTh={wordExplain.meaningTh}
+                          reading={wordExplain.reading}
+                          example={wordExplain.example || selectedWord.lineText}
+                          source="karaoke"
+                          sourceLabel={`เพลง ${currentSong.title}`}
+                          size="xs"
+                          compactLabel
+                        />
+                        <div className="flex items-center gap-2">
+                          {explainQuota.hasKey && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                              AI เหลือ {explainQuota.remaining}/{explainQuota.limit} คำวันนี้
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => fetchAiWordExplanation(selectedWord.word, selectedWord.lineText)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                          >
+                            <Sparkles size={12} />
+                            <span>ให้ AI อธิบายเชิงลึกในท่อนนี้</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -715,6 +884,7 @@ export const KaraokeStudio: React.FC<KaraokeStudioProps> = ({
                 vocabDeck={currentSong.vocabDeck || []}
                 lines={currentSong.lines}
                 language={currentSong.language}
+                songTitle={currentSong.title}
                 onSeekToTime={(t) => {
                   setMode('sing');
                   playerRef.current?.seekTo(Math.max(0, t - syncOffsetSec), true);

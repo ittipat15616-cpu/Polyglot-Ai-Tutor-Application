@@ -1,17 +1,33 @@
 import { SubscriptionTier } from '../types/subscription';
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirebaseAuthHeaders } from './authHeaders';
 
-const STORAGE_KEY = 'byok_gemini_api_key';
+const LEGACY_STORAGE_KEY = 'byok_gemini_api_key';
+const KEY_STORAGE_PREFIX = 'byok_gemini_api_key_v2_';
 const QUOTA_STORAGE_PREFIX = 'byok_daily_quota_v1_';
 
-export type ByokQuotaFeature = 'vocab_exam' | 'mock_test' | 'karaoke_translate' | 'video_subtitle';
+export type ByokQuotaFeature =
+  | 'vocab_exam'
+  | 'mock_test'
+  | 'karaoke_translate'
+  | 'karaoke_explain'
+  | 'video_subtitle'
+  | 'reading_analyze'
+  | 'roleplay_custom'
+  | 'roleplay_report'
+  | 'shadowing_analyze';
 
 export const BYOK_DAILY_LIMITS: Record<ByokQuotaFeature, number> = {
-  vocab_exam: 7,
+  vocab_exam: 10,
   mock_test: 3,
-  karaoke_translate: 3,
+  karaoke_translate: 10,
+  karaoke_explain: 100,
   video_subtitle: 1,
+  reading_analyze: 3,
+  roleplay_custom: 30,
+  roleplay_report: 100,
+  shadowing_analyze: 100,
 };
 
 /** Max video length for BYOK free AI subtitles (5 minutes = 300s, ~12.8MB WAV base64, well below Gemini's 20MB inlineData limit) */
@@ -24,8 +40,23 @@ export interface ByokDailyUsage {
   vocab_exam: number;
   mock_test: number;
   karaoke_translate: number;
+  karaoke_explain: number;
   video_subtitle: number;
+  reading_analyze: number;
+  roleplay_custom: number;
+  roleplay_report: number;
+  shadowing_analyze: number;
   updatedAt: number;
+}
+
+export interface ByokQuotaStatus {
+  isSignedIn: boolean;
+  hasKey: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  canUseFree: boolean;
+  periodKey: string;
 }
 
 export interface ByokRates {
@@ -34,6 +65,13 @@ export interface ByokRates {
   isCallUnlimited: boolean;
   docUploadCreditCost: number; // 0 for free, 1 for 1 credit, etc.
   label: string;
+}
+
+/**
+ * Returns true strictly when a user is signed in with Firebase Auth.
+ */
+export function isByokSignedIn(): boolean {
+  return Boolean(auth.currentUser?.uid);
 }
 
 /**
@@ -50,7 +88,6 @@ export function getPacificPeriodKey(nowMs: number = Date.now()): string {
     });
     return formatter.format(new Date(nowMs)); // YYYY-MM-DD
   } catch {
-    // Fallback: UTC-8 approximation
     const ptDate = new Date(nowMs - 8 * 60 * 60 * 1000);
     return ptDate.toISOString().slice(0, 10);
   }
@@ -60,9 +97,12 @@ export function getResetTimeLabelThai(): string {
   return '15:00 น. (เวลาไทย)';
 }
 
-function getQuotaStorageKey(uid?: string): string {
-  const effectiveUid = uid || auth.currentUser?.uid || 'guest';
-  return `${QUOTA_STORAGE_PREFIX}${effectiveUid}`;
+function getKeyStorageKey(uid: string): string {
+  return `${KEY_STORAGE_PREFIX}${uid}`;
+}
+
+function getQuotaStorageKey(uid: string): string {
+  return `${QUOTA_STORAGE_PREFIX}${uid}`;
 }
 
 function createEmptyUsage(periodKey: string): ByokDailyUsage {
@@ -71,20 +111,27 @@ function createEmptyUsage(periodKey: string): ByokDailyUsage {
     vocab_exam: 0,
     mock_test: 0,
     karaoke_translate: 0,
+    karaoke_explain: 0,
     video_subtitle: 0,
+    reading_analyze: 0,
+    roleplay_custom: 0,
+    roleplay_report: 0,
+    shadowing_analyze: 0,
     updatedAt: Date.now(),
   };
 }
 
 /**
- * Synchronously read current BYOK daily usage from localStorage (resets cleanly if periodKey changed).
+ * Synchronously read current BYOK daily usage from localStorage for the signed-in user.
+ * When signed out, always returns empty usage (BYOK is unavailable while logged out).
  */
 export function getByokDailyUsage(uid?: string): ByokDailyUsage {
   const todayKey = getPacificPeriodKey();
-  if (typeof window === 'undefined') return createEmptyUsage(todayKey);
+  const effectiveUid = uid || auth.currentUser?.uid;
+  if (typeof window === 'undefined' || !effectiveUid) return createEmptyUsage(todayKey);
 
   try {
-    const raw = localStorage.getItem(getQuotaStorageKey(uid));
+    const raw = localStorage.getItem(getQuotaStorageKey(effectiveUid));
     if (!raw) return createEmptyUsage(todayKey);
     const parsed = JSON.parse(raw) as Partial<ByokDailyUsage>;
     if (parsed.periodKey !== todayKey) {
@@ -95,7 +142,12 @@ export function getByokDailyUsage(uid?: string): ByokDailyUsage {
       vocab_exam: Math.max(0, Number(parsed.vocab_exam) || 0),
       mock_test: Math.max(0, Number(parsed.mock_test) || 0),
       karaoke_translate: Math.max(0, Number(parsed.karaoke_translate) || 0),
+      karaoke_explain: Math.max(0, Number(parsed.karaoke_explain) || 0),
       video_subtitle: Math.max(0, Number(parsed.video_subtitle) || 0),
+      reading_analyze: Math.max(0, Number(parsed.reading_analyze) || 0),
+      roleplay_custom: Math.max(0, Number(parsed.roleplay_custom) || 0),
+      roleplay_report: Math.max(0, Number(parsed.roleplay_report) || 0),
+      shadowing_analyze: Math.max(0, Number(parsed.shadowing_analyze) || 0),
       updatedAt: Number(parsed.updatedAt) || Date.now(),
     };
   } catch {
@@ -103,8 +155,8 @@ export function getByokDailyUsage(uid?: string): ByokDailyUsage {
   }
 }
 
-function saveLocalUsage(usage: ByokDailyUsage, uid?: string) {
-  if (typeof window === 'undefined') return;
+function saveLocalUsage(usage: ByokDailyUsage, uid: string) {
+  if (typeof window === 'undefined' || !uid) return;
   try {
     localStorage.setItem(getQuotaStorageKey(uid), JSON.stringify(usage));
     window.dispatchEvent(new CustomEvent('byok_quota_updated', { detail: usage }));
@@ -120,9 +172,10 @@ function saveLocalUsage(usage: ByokDailyUsage, uid?: string) {
 export async function syncByokDailyUsageWithFirestore(userId?: string): Promise<ByokDailyUsage> {
   const todayKey = getPacificPeriodKey();
   const uid = userId || auth.currentUser?.uid;
-  const localUsage = getByokDailyUsage(uid);
+  if (!uid) return createEmptyUsage(todayKey);
 
-  if (!uid || !db) return localUsage;
+  const localUsage = getByokDailyUsage(uid);
+  if (!db) return localUsage;
 
   try {
     const ref = doc(db, 'users', uid, 'settings', 'byok_daily_usage');
@@ -135,7 +188,12 @@ export async function syncByokDailyUsageWithFirestore(userId?: string): Promise<
           vocab_exam: Math.max(localUsage.vocab_exam, Number(data.vocab_exam) || 0),
           mock_test: Math.max(localUsage.mock_test, Number(data.mock_test) || 0),
           karaoke_translate: Math.max(localUsage.karaoke_translate, Number(data.karaoke_translate) || 0),
+          karaoke_explain: Math.max(localUsage.karaoke_explain, Number(data.karaoke_explain) || 0),
           video_subtitle: Math.max(localUsage.video_subtitle, Number(data.video_subtitle) || 0),
+          reading_analyze: Math.max(localUsage.reading_analyze, Number(data.reading_analyze) || 0),
+          roleplay_custom: Math.max(localUsage.roleplay_custom, Number(data.roleplay_custom) || 0),
+          roleplay_report: Math.max(localUsage.roleplay_report, Number(data.roleplay_report) || 0),
+          shadowing_analyze: Math.max(localUsage.shadowing_analyze, Number(data.shadowing_analyze) || 0),
           updatedAt: Date.now(),
         };
         saveLocalUsage(merged, uid);
@@ -150,20 +208,29 @@ export async function syncByokDailyUsageWithFirestore(userId?: string): Promise<
   }
 }
 
-export function getByokQuotaStatus(feature: ByokQuotaFeature, uid?: string): {
-  hasKey: boolean;
-  limit: number;
-  used: number;
-  remaining: number;
-  canUseFree: boolean;
-  periodKey: string;
-} {
-  const hasKey = hasActiveByokKey();
-  const usage = getByokDailyUsage(uid);
+export function getByokQuotaStatus(feature: ByokQuotaFeature, uid?: string): ByokQuotaStatus {
+  const effectiveUid = uid || auth.currentUser?.uid;
   const limit = BYOK_DAILY_LIMITS[feature];
+  const todayKey = getPacificPeriodKey();
+
+  if (!effectiveUid) {
+    return {
+      isSignedIn: false,
+      hasKey: false,
+      limit,
+      used: 0,
+      remaining: limit,
+      canUseFree: false,
+      periodKey: todayKey,
+    };
+  }
+
+  const hasKey = hasActiveByokKey();
+  const usage = getByokDailyUsage(effectiveUid);
   const used = usage[feature] || 0;
   const remaining = Math.max(0, limit - used);
   return {
+    isSignedIn: true,
     hasKey,
     limit,
     used,
@@ -175,19 +242,40 @@ export function getByokQuotaStatus(feature: ByokQuotaFeature, uid?: string): {
 
 /**
  * Consumes 1 unit of a BYOK daily free quota AFTER a successful AI call.
+ * Immediately updates localStorage + dispatches byok_quota_updated so UI decrements without lag,
+ * then syncs to Firestore in the same flow.
  */
 export async function consumeByokFreeQuota(feature: ByokQuotaFeature): Promise<ByokDailyUsage> {
   const uid = auth.currentUser?.uid;
-  const current = await syncByokDailyUsageWithFirestore(uid);
+  const todayKey = getPacificPeriodKey();
+  if (!uid) {
+    return createEmptyUsage(todayKey);
+  }
+
+  // Merge latest remote count first (if reachable) so cross-device usage is respected
+  const baseline = await syncByokDailyUsageWithFirestore(uid).catch(() => getByokDailyUsage(uid));
+  const localLatest = getByokDailyUsage(uid);
+  const currentUsed = Math.max(baseline[feature] || 0, localLatest[feature] || 0);
+
   const updated: ByokDailyUsage = {
-    ...current,
-    [feature]: Math.min(BYOK_DAILY_LIMITS[feature], (current[feature] || 0) + 1),
+    periodKey: todayKey,
+    vocab_exam: Math.max(baseline.vocab_exam || 0, localLatest.vocab_exam || 0),
+    mock_test: Math.max(baseline.mock_test || 0, localLatest.mock_test || 0),
+    karaoke_translate: Math.max(baseline.karaoke_translate || 0, localLatest.karaoke_translate || 0),
+    karaoke_explain: Math.max(baseline.karaoke_explain || 0, localLatest.karaoke_explain || 0),
+    video_subtitle: Math.max(baseline.video_subtitle || 0, localLatest.video_subtitle || 0),
+    reading_analyze: Math.max(baseline.reading_analyze || 0, localLatest.reading_analyze || 0),
+    roleplay_custom: Math.max(baseline.roleplay_custom || 0, localLatest.roleplay_custom || 0),
+    roleplay_report: Math.max(baseline.roleplay_report || 0, localLatest.roleplay_report || 0),
+    shadowing_analyze: Math.max(baseline.shadowing_analyze || 0, localLatest.shadowing_analyze || 0),
+    [feature]: Math.min(BYOK_DAILY_LIMITS[feature], currentUsed + 1),
     updatedAt: Date.now(),
   };
 
+  // Persist locally & notify every mounted UI component immediately
   saveLocalUsage(updated, uid);
 
-  if (uid && db) {
+  if (db) {
     try {
       const ref = doc(db, 'users', uid, 'settings', 'byok_daily_usage');
       await setDoc(ref, updated, { merge: true });
@@ -200,43 +288,71 @@ export async function consumeByokFreeQuota(feature: ByokQuotaFeature): Promise<B
 }
 
 /**
- * Get stored BYOK API Key from localStorage
+ * Get stored BYOK API Key for the currently signed-in user ONLY.
+ * Strictly returns null whenever the user is NOT signed in.
  */
 export function getStoredByokKey(): string | null {
   if (typeof window === 'undefined') return null;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return null;
+
   try {
-    const key = localStorage.getItem(STORAGE_KEY);
-    return key && key.trim().length > 10 ? key.trim() : null;
-  } catch (e) {
+    const scopedKey = localStorage.getItem(getKeyStorageKey(uid));
+    if (scopedKey && scopedKey.trim().length > 10) {
+      return scopedKey.trim();
+    }
+    return null;
+  } catch {
     return null;
   }
 }
 
 /**
- * Save validated BYOK API Key to localStorage, sync to user's Google account in Firestore, and emit change event
+ * Clears local BYOK active session state on sign-out and removes any legacy unscoped key.
+ * Notifies all components immediately so BYOK UI switches off cleanly.
+ */
+export function clearLocalByokSession(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {}
+  window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: null } }));
+  window.dispatchEvent(new CustomEvent('byok_quota_updated', { detail: createEmptyUsage(getPacificPeriodKey()) }));
+}
+
+/**
+ * Save validated BYOK API Key (STRICTLY requires signed-in Google account),
+ * persist per-UID locally + sync to Firestore, and emit change events.
  */
 export async function setStoredByokKey(apiKey: string): Promise<void> {
   if (typeof window === 'undefined') return;
+  const user = auth.currentUser;
+  if (!user?.uid) {
+    throw new Error('กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนบันทึก Gemini API Key (BYOK)');
+  }
+
   const cleanKey = apiKey.trim();
   try {
-    localStorage.setItem(STORAGE_KEY, cleanKey);
+    localStorage.setItem(getKeyStorageKey(user.uid), cleanKey);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: cleanKey } }));
+    window.dispatchEvent(new CustomEvent('byok_quota_updated', { detail: getByokDailyUsage(user.uid) }));
   } catch (e) {
     console.error('Failed to save BYOK key to localStorage', e);
   }
 
   // Cloud Sync: Persist with user's Google account in Firestore
-  if (auth.currentUser && db) {
+  if (db) {
     try {
-      const byokRef = doc(db, 'users', auth.currentUser.uid, 'settings', 'byok');
+      const byokRef = doc(db, 'users', user.uid, 'settings', 'byok');
       await setDoc(byokRef, {
         apiKey: cleanKey,
         updatedAt: Date.now(),
-        userEmail: auth.currentUser.email || ''
+        userEmail: user.email || ''
       }, { merge: true });
 
       // Redundant backup directly under users/{uid}
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
+      await setDoc(doc(db, 'users', user.uid), {
         byokApiKey: cleanKey,
         byokUpdatedAt: Date.now()
       }, { merge: true });
@@ -247,27 +363,32 @@ export async function setStoredByokKey(apiKey: string): Promise<void> {
 }
 
 /**
- * Remove stored BYOK key from localStorage and clear from user's Google account in Firestore
+ * Remove stored BYOK key for the currently signed-in user from localStorage and Firestore.
  */
 export async function removeStoredByokKey(): Promise<void> {
   if (typeof window === 'undefined') return;
+  const user = auth.currentUser;
+
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    if (user?.uid) {
+      localStorage.removeItem(getKeyStorageKey(user.uid));
+    }
     window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: null } }));
+    window.dispatchEvent(new CustomEvent('byok_quota_updated', { detail: getByokDailyUsage(user?.uid) }));
   } catch (e) {
     console.error('Failed to remove BYOK key from localStorage', e);
   }
 
-  // Clear from user's Google account in Firestore
-  if (auth.currentUser && db) {
+  if (user?.uid && db) {
     try {
-      const byokRef = doc(db, 'users', auth.currentUser.uid, 'settings', 'byok');
+      const byokRef = doc(db, 'users', user.uid, 'settings', 'byok');
       await setDoc(byokRef, {
         apiKey: null,
         updatedAt: Date.now()
       }, { merge: true });
 
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
+      await setDoc(doc(db, 'users', user.uid), {
         byokApiKey: null,
         byokUpdatedAt: Date.now()
       }, { merge: true });
@@ -278,26 +399,39 @@ export async function removeStoredByokKey(): Promise<void> {
 }
 
 /**
- * Sync BYOK API Key from user's Google Account in Firestore to current device
+ * Sync BYOK API Key & daily usage from user's Google Account in Firestore to current device.
+ * Strictly no-op when signed out.
  */
 export async function syncByokKeyWithFirestore(userId?: string): Promise<string | null> {
   const uid = userId || auth.currentUser?.uid;
-  if (!uid || !db) return getStoredByokKey();
+  if (!uid) {
+    return null;
+  }
+
+  // Clean up any legacy unscoped key from older versions so it never leaks across accounts
+  try {
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {}
+
+  if (!db) return getStoredByokKey();
 
   try {
     const byokRef = doc(db, 'users', uid, 'settings', 'byok');
     const snap = await getDoc(byokRef);
     let remoteKey: string | null = null;
+    let explicitlyClearedInCloud = false;
 
     if (snap.exists()) {
       const data = snap.data();
       if (data?.apiKey && typeof data.apiKey === 'string' && data.apiKey.trim().length > 10) {
         remoteKey = data.apiKey.trim();
+      } else if (data?.apiKey === null) {
+        explicitlyClearedInCloud = true;
       }
     }
 
     // Secondary lookup directly on user root document
-    if (!remoteKey) {
+    if (!remoteKey && !explicitlyClearedInCloud) {
       const userDoc = await getDoc(doc(db, 'users', uid));
       if (userDoc.exists()) {
         const uData = userDoc.data();
@@ -309,17 +443,19 @@ export async function syncByokKeyWithFirestore(userId?: string): Promise<string 
 
     const localKey = getStoredByokKey();
 
-    // Also sync daily usage in background
-    syncByokDailyUsageWithFirestore(uid).catch(() => {});
+    // Sync daily usage for this signed-in UID and broadcast
+    await syncByokDailyUsageWithFirestore(uid).catch(() => {});
 
     if (remoteKey) {
-      if (remoteKey !== localKey) {
-        localStorage.setItem(STORAGE_KEY, remoteKey);
-        window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: remoteKey } }));
-      }
+      localStorage.setItem(getKeyStorageKey(uid), remoteKey);
+      window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: remoteKey } }));
       return remoteKey;
+    } else if (explicitlyClearedInCloud) {
+      localStorage.removeItem(getKeyStorageKey(uid));
+      window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: null } }));
+      return null;
     } else if (localKey) {
-      // Backfill local key to Google account
+      // Backfill local UID-scoped key to Google account
       await setDoc(byokRef, {
         apiKey: localKey,
         updatedAt: Date.now(),
@@ -329,9 +465,11 @@ export async function syncByokKeyWithFirestore(userId?: string): Promise<string 
         byokApiKey: localKey,
         byokUpdatedAt: Date.now()
       }, { merge: true });
+      window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: localKey } }));
       return localKey;
     }
 
+    window.dispatchEvent(new CustomEvent('byok_key_updated', { detail: { apiKey: null } }));
     return null;
   } catch (err) {
     console.error('Error syncing BYOK key from Firestore:', err);
@@ -340,28 +478,43 @@ export async function syncByokKeyWithFirestore(userId?: string): Promise<string 
 }
 
 /**
- * Check if a validated BYOK key is currently active
+ * Check if a validated BYOK key is currently active (strictly requires Google Sign-In).
  */
 export function hasActiveByokKey(): boolean {
-  return Boolean(getStoredByokKey());
+  return Boolean(auth.currentUser?.uid && getStoredByokKey());
 }
 
 /**
- * Validates a Gemini API key by testing it against the server validation endpoint
+ * Validates a Gemini API key against the authenticated server validation endpoint.
  */
-export async function validateApiKeyWithServer(apiKey: string): Promise<{ valid: boolean; message: string }> {
+export async function validateApiKeyWithServer(apiKey: string): Promise<{ valid: boolean; message: string; authRequired?: boolean }> {
+  if (!auth.currentUser) {
+    return {
+      valid: false,
+      authRequired: true,
+      message: 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนตั้งค่าและตรวจสอบ API Key (BYOK)',
+    };
+  }
   try {
+    const headers = await getFirebaseAuthHeaders();
     const res = await fetch('/api/validate-key', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ apiKey: apiKey.trim() })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401 || data.authRequired) {
+      return {
+        valid: false,
+        authRequired: true,
+        message: data.message || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนตรวจสอบ API Key',
+      };
+    }
     if (res.ok && data.valid) {
       return { valid: true, message: data.message || 'API Key ใช้งานได้สมบูรณ์' };
     }
     return { valid: false, message: data.message || 'API Key ไม่ถูกต้อง หรือไม่มีสิทธิ์เข้าถึง' };
-  } catch (err: any) {
+  } catch {
     return { valid: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อตรวจสอบคีย์ได้ กรุณาลองใหม่อีกครั้ง' };
   }
 }
@@ -375,6 +528,6 @@ export function getByokCallRates(_tier?: SubscriptionTier): ByokRates {
     videoCallSecondsPerCredit: 0,
     isCallUnlimited: true,
     docUploadCreditCost: 0,
-    label: 'คอล AI ฟรีไม่อั้น + สอบศัพท์ 7 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 3 • ใส่ซับ AI 1 คลิป/วัน (≤5 นาที)'
+    label: 'คอล AI ฟรีไม่อั้น + สอบศัพท์ 10 • ฝึกพูดตามประโยค AI 100 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • บทความส่วนตัว 3 • สร้างด่าน Roleplay 30 • สรุปคะแนน Roleplay 100 • ใส่ซับ AI 1 คลิป/วัน'
   };
 }

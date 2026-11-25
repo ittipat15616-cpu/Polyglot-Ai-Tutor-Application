@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, Clock, FileText, Headphones, Edit3, Mic, CheckCircle, ChevronRight, Send, Key } from 'lucide-react';
+import { ChevronLeft, Clock, FileText, Headphones, Edit3, Mic, CheckCircle, ChevronRight, Send, Key, LogIn } from 'lucide-react';
 import { getFirebaseStorageUrl } from '../utils/firebaseStorage';
 import DocumentGallery from './DocumentGallery';
 import PdfViewer from './PdfViewer';
@@ -9,7 +9,10 @@ import ByokQuotaFallbackModal, { QuotaFallbackReason } from './ByokQuotaFallback
 import { gradeIeltsExam, IeltsGradeResult } from '../utils/ieltsGrading';
 import { gradeWritingTask, gradeSpeaking, AiGradingResult } from '../utils/AiGradingService';
 import { saveMockTestResult } from '../services/userPersistence';
+import { logMistakesBatch } from '../services/mistakeService';
 import { deductCredit } from '../services/subscriptionService';
+import { auth } from '../firebase';
+import { openLoginModal } from '../services/authHeaders';
 import {
   consumeByokFreeQuota,
   getByokQuotaStatus,
@@ -45,8 +48,10 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
   const [result, setResult] = useState<IeltsGradeResult | AiGradingResult | null>(null);
   const answersRef = useRef(answers);
   const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('mock_test'));
+  const [usedByokInResult, setUsedByokInResult] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [fallbackModal, setFallbackModal] = useState<{ open: boolean; reason: QuotaFallbackReason }>({
     open: false,
     reason: 'byok_daily_exhausted',
@@ -106,6 +111,9 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
     setHasStarted(false); // Reset so they have to click Start
     setResult(null);
     setAnswers({});
+    setUsedByokInResult(false);
+    setErrorMessage(null);
+    setNeedsLogin(false);
     
     if (skill === 'reading' || skill === 'writing') setTimeLeft(60 * 60);
     if (skill === 'listening') setTimeLeft(40 * 60);
@@ -133,7 +141,7 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
       setIsRecording(true);
     } catch (e) {
       console.error(e);
-      alert('ไม่สามารถเข้าถึงไมโครโฟนได้');
+      setErrorMessage('ไม่สามารถเข้าถึงไมโครโฟนได้ กรุณาอนุญาตการใช้ไมโครโฟนในเบราว์เซอร์');
     }
   };
 
@@ -152,8 +160,15 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
   const handleSubmit = async (forceUseCredits = false) => {
     if (!activeSkill) return;
     setErrorMessage(null);
+    setNeedsLogin(false);
 
     const isAiSkill = activeSkill === 'writing' || activeSkill === 'speaking';
+
+    if (isAiSkill && !auth.currentUser) {
+      setNeedsLogin(true);
+      setErrorMessage('กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนให้ AI ตรวจข้อสอบ IELTS (Writing / Speaking) หรือใช้สิทธิ์ BYOK ครับ');
+      return;
+    }
 
     if (activeSkill === 'speaking') {
       const speakingKeys = Object.keys(answersRef.current).filter(k => k.startsWith('speakingAudio_'));
@@ -207,6 +222,7 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
         await consumeByokFreeQuota('mock_test');
         setByokQuota(getByokQuotaStatus('mock_test'));
       }
+      setUsedByokInResult(shouldTryByok);
 
       setResult(finalResult as any);
 
@@ -225,9 +241,33 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
         resultsBreakdown: finalResult.answers,
         createdAt: Date.now()
       });
+
+      // Auto-capture wrong attempted IELTS Listening/Reading answers into Smart Mistake Notebook
+      if (finalResult?.details && typeof finalResult.details === 'object') {
+        const wrongIelts = Object.entries(finalResult.details as Record<string, any>)
+          .filter(([, d]) => d && !d.isCorrect && String(d.userAnswer || '').trim() !== '')
+          .slice(0, 35)
+          .map(([qNum, d]) => ({
+            lang: 'EN' as const,
+            source: 'mock_test' as const,
+            sourceLabel: `IELTS ${activeSkill.toUpperCase()} (${normalizedExamId.replace(/_/g, ' ')})`,
+            prompt: `IELTS ${activeSkill.toUpperCase()} (${normalizedExamId.replace(/_/g, ' ')}) • ข้อที่ ${qNum}`,
+            userWrongAnswer: String(d.userAnswer || ''),
+            correctAnswer: String(d.correctAnswer || ''),
+            explanationTh: d.explanation ? String(d.explanation) : undefined,
+          }));
+        if (wrongIelts.length > 0) {
+          logMistakesBatch(wrongIelts).catch(() => {});
+        }
+      }
     } catch (err: any) {
       console.error(err);
-      if (shouldTryByok && (err?.byokQuotaExhausted || err?.status === 429)) {
+      if (err?.authRequired || (err?.status === 401 && !err?.byokInvalidKey)) {
+        setNeedsLogin(true);
+        setErrorMessage(err?.message || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนให้ AI ตรวจข้อสอบครับ');
+        return;
+      }
+      if (shouldTryByok && (err?.byokQuotaExhausted || err?.byokInvalidKey || err?.status === 429)) {
         setFallbackModal({ open: true, reason: 'byok_google_429' });
         return;
       }
@@ -250,7 +290,15 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
         
         <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">{normalizedExamId.replace(/_/g, ' ')}</h1>
-          <p className="text-gray-600 mb-8 max-w-2xl mx-auto">ยินดีต้อนรับเข้าสู่ระบบจำลองสอบ IELTS แบบ Computer-based โปรดเลือกทักษะที่ต้องการเริ่มต้นสอบ</p>
+          <p className="text-gray-600 mb-6 max-w-2xl mx-auto">ยินดีต้อนรับเข้าสู่ระบบจำลองสอบ IELTS แบบ Computer-based โปรดเลือกทักษะที่ต้องการเริ่มต้นสอบ</p>
+          {byokQuota.hasKey && (
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-6">
+              <Key size={14} className="text-emerald-600 shrink-0" />
+              <span>
+                สิทธิ์ฟรี BYOK ตรวจข้อสอบ AI (Writing / Speaking) วันนี้: เหลือ {byokQuota.remaining}/{byokQuota.limit} ครั้ง
+              </span>
+            </div>
+          )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <button
@@ -325,7 +373,16 @@ export default function IeltsMockTestArea({ examId, initialSkill, onBack }: Ielt
   }
 
   if (result) {
-    return <IeltsMockTestResult examId={normalizedExamId} skill={activeSkill} resultData={result} onClose={() => setActiveSkill(null)} />;
+    return (
+      <IeltsMockTestResult
+        examId={normalizedExamId}
+        skill={activeSkill}
+        resultData={result}
+        usedByok={usedByokInResult}
+        byokQuota={byokQuota}
+        onClose={() => setActiveSkill(null)}
+      />
+    );
   }
 
   // Audio configuration
@@ -489,6 +546,18 @@ const WRITING_SPECIFIC_PAGES: number[] = [1, 3];
       {activeSkill === 'speaking' ? (
         <div className="flex-1 bg-white rounded-b-2xl border-x border-b border-gray-200 flex flex-col items-center justify-center p-8">
            <div className="max-w-xl w-full bg-rose-50 border border-rose-100 rounded-3xl p-10 flex flex-col items-center text-center">
+              {byokQuota.hasKey && (
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border mb-4 ${
+                  byokQuota.canUseFree
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}>
+                  <Key size={13} />
+                  {byokQuota.canUseFree
+                    ? `BYOK ฟรีตรวจ Speaking เหลือ ${byokQuota.remaining}/${byokQuota.limit} ครั้งวันนี้`
+                    : `BYOK ครบโควตาวันนี้ (เหลือ 0/${byokQuota.limit})`}
+                </span>
+              )}
               <h3 className="text-2xl font-bold text-rose-900 mb-6">{audioLabel}</h3>
               <p className="text-rose-700 mb-8">Listen to the examiner and then record your answer.</p>
               
@@ -569,8 +638,18 @@ const WRITING_SPECIFIC_PAGES: number[] = [1, 3];
               )}
             </h3>
             {errorMessage && (
-              <div className="mb-4 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5">
-                {errorMessage}
+              <div className="mb-4 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                <span>{errorMessage}</span>
+                {needsLogin && (
+                  <button
+                    type="button"
+                    onClick={() => openLoginModal()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0"
+                  >
+                    <LogIn size={13} />
+                    <span>เข้าสู่ระบบด้วย Google</span>
+                  </button>
+                )}
               </div>
             )}
             <IeltsAnswerSheet skill={activeSkill} answers={answers} onAnswerChange={handleAnswerChange} />
@@ -579,8 +658,18 @@ const WRITING_SPECIFIC_PAGES: number[] = [1, 3];
       )}
 
       {activeSkill === 'speaking' && errorMessage && (
-        <div className="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-center">
-          {errorMessage}
+        <div className="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-center gap-3">
+          <span>{errorMessage}</span>
+          {needsLogin && (
+            <button
+              type="button"
+              onClick={() => openLoginModal()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0"
+            >
+              <LogIn size={13} />
+              <span>เข้าสู่ระบบด้วย Google</span>
+            </button>
+          )}
         </div>
       )}
 

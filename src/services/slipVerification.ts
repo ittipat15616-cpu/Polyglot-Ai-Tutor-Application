@@ -1,6 +1,7 @@
 import jsQR from 'jsqr';
 import { db, auth } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirebaseAuthHeaders } from './authHeaders';
 
 export interface SlipVerificationResult {
   success: boolean;
@@ -117,9 +118,7 @@ export async function verifyPaymentSlip(
   try {
     const verifyRes = await fetch('/api/verify-slip', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
+      headers: await getFirebaseAuthHeaders(),
       body: JSON.stringify({ imageUrl, expectedAmount })
     });
     

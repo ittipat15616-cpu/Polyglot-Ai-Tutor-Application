@@ -1,4 +1,6 @@
 import { RoleplayMission } from './types';
+import { SOCIAL_MISSIONS_PART2 } from './missionsSocialPart2';
+import { SOCIAL_MISSIONS_PART3 } from './missionsSocialPart3';
 
 export const SOCIAL_MISSIONS: RoleplayMission[] = [
   {
@@ -667,4 +669,6 @@ export const SOCIAL_MISSIONS: RoleplayMission[] = [
       { en: 'Everyone, please raise your glasses to a lifetime of love and adventure—cheers!', cn: '请大家举起酒杯，祝他们一生相爱、幸福美满，干杯！', pinyin: 'Qǐng dàjiā jǔqǐ jiǔbēi, zhù tāmen yìshēng xiāng’ài, xìngfú měimǎn, gānbēi!', th: 'ขอเชิญทุกคนยกแก้วดื่มให้กับความรักตลอดไปของทั้งคู่ครับ ไชโย!' },
     ],
   },
+  ...SOCIAL_MISSIONS_PART2,
+  ...SOCIAL_MISSIONS_PART3,
 ];

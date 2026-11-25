@@ -7,6 +7,7 @@ import hsk6AnswerKey from '../data/hsk6_answer_key.json';
 import { hsk4Keywords } from './hsk4Keywords';
 import { hsk5WritingPrompts } from './hsk5Keywords';
 import { hsk6Articles } from './hsk6Articles';
+import { getFirebaseAuthHeaders } from '../services/authHeaders';
 
 export interface ExamResult {
   totalScore: number;
@@ -263,7 +264,7 @@ export async function gradeExam(
     if (hsk4BatchItems.length > 0) {
       const response = await fetch('/api/grade-writing-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getFirebaseAuthHeaders(),
         body: JSON.stringify({
           level: 'HSK4',
           items: hsk4BatchItems,
@@ -275,6 +276,8 @@ export async function gradeExam(
       if (!response.ok) {
         const err: any = new Error(data.error || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI");
         err.status = response.status;
+        err.byokInvalidKey = Boolean(data.byokInvalidKey);
+        err.authRequired = Boolean(data.authRequired || (response.status === 401 && !data.byokInvalidKey));
         err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || response.status === 429);
         throw err;
       }
@@ -384,7 +387,7 @@ export async function gradeExam(
     if (hsk5BatchItems.length > 0) {
       const response = await fetch('/api/grade-writing-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getFirebaseAuthHeaders(),
         body: JSON.stringify({
           level: 'HSK5',
           items: hsk5BatchItems,
@@ -396,6 +399,8 @@ export async function gradeExam(
       if (!response.ok) {
         const err: any = new Error(data.error || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI");
         err.status = response.status;
+        err.byokInvalidKey = Boolean(data.byokInvalidKey);
+        err.authRequired = Boolean(data.authRequired || (response.status === 401 && !data.byokInvalidKey));
         err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || response.status === 429);
         throw err;
       }
@@ -483,9 +488,7 @@ export async function gradeExam(
             
             const response = await fetch('/api/grade-writing', { 
               method: 'POST', 
-              headers: { 
-                'Content-Type': 'application/json',
-              }, 
+              headers: await getFirebaseAuthHeaders(), 
               body: JSON.stringify({
                 prompt,
                 useByokQuota: Boolean(byokOpts?.useByokQuota),
@@ -496,6 +499,8 @@ export async function gradeExam(
             if (!response.ok) {
               const err: any = new Error(parsed.error || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI");
               err.status = response.status;
+              err.byokInvalidKey = Boolean(parsed.byokInvalidKey);
+              err.authRequired = Boolean(parsed.authRequired || (response.status === 401 && !parsed.byokInvalidKey));
               err.byokQuotaExhausted = Boolean(parsed.byokQuotaExhausted || response.status === 429);
               throw err;
             }
@@ -503,11 +508,8 @@ export async function gradeExam(
             isCorrect = Number(parsed.score) === 100;
             explanationThai = parsed.feedback || "";
           } catch (e: any) {
-            if (e?.byokQuotaExhausted || e?.status === 429) {
-              throw e;
-            }
             console.error("AI Grading error:", e);
-            explanationThai = e?.message || "เกิดข้อผิดพลาดในการเรียกใช้ AI ตรวจคำตอบ";
+            throw e;
           }
         } else {
           isCorrect = false;

@@ -20,6 +20,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { auth } from '../../firebase';
+import { getFirebaseAuthHeaders, openLoginModal } from '../../services/authHeaders';
 import {
   deductCredit,
   getTotalCredits,
@@ -258,6 +259,14 @@ export default function SubtitlePreviewModal({
     }
 
     // ── GEMINI AI MODE (Free 1 clip/day <= 5 min via BYOK, OR 5 Credits via Owner Server) ──
+    if (!auth.currentUser) {
+      setNeedsLoginError(true);
+      setSubError(
+        `กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้โหมด Gemini AI หรือสิทธิ์ฟรี BYOK (หรือสลับไปใช้โหมด "ฟรีบนเครื่อง 0 เครดิต" ได้ทันทีครับ)`
+      );
+      return;
+    }
+
     const latestQuota = getByokQuotaStatus('video_subtitle');
     setByokQuota(latestQuota);
     const useByokNow = !forceUseCredits && latestQuota.canUseFree && isWithinByokDuration;
@@ -269,14 +278,6 @@ export default function SubtitlePreviewModal({
     }
 
     if (!useByokNow) {
-      if (!auth.currentUser) {
-        setNeedsLoginError(true);
-        setSubError(
-          `กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้โหมด Gemini AI (${SUBTITLE_CREDIT_COST} เครดิต / ครั้ง) หรือเชื่อม BYOK / ใช้โหมด "ทำซับฟรีบนเครื่อง (0 เครดิต)" แทนได้ครับ`
-        );
-        return;
-      }
-
       try {
         const subState = await loadUserSubscription();
         const total = getTotalCredits(subState);
@@ -322,11 +323,10 @@ export default function SubtitlePreviewModal({
       });
 
       const byokKey = useByokNow ? getStoredByokKey() : null;
+      const authHeaders = await getFirebaseAuthHeaders();
       const response = await fetch('/api/generate-subtitles', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           audioBase64: base64,
           mimeType,
@@ -341,6 +341,8 @@ export default function SubtitlePreviewModal({
       let data: {
         subtitles?: SubtitleCue[];
         error?: string;
+        authRequired?: boolean;
+        byokInvalidKey?: boolean;
         byokQuotaExhausted?: boolean;
         usedByok?: boolean;
       } = {};
@@ -355,7 +357,11 @@ export default function SubtitlePreviewModal({
       }
 
       if (!response.ok) {
-        if (useByokNow && (response.status === 429 || data.byokQuotaExhausted)) {
+        if (data.authRequired || (response.status === 401 && !data.byokInvalidKey)) {
+          setNeedsLoginError(true);
+          throw new Error(data.error || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ Gemini AI ครับ');
+        }
+        if (useByokNow && (response.status === 429 || data.byokQuotaExhausted || data.byokInvalidKey)) {
           setFallbackModal({ open: true, reason: 'byok_google_429' });
           return;
         }
@@ -366,21 +372,23 @@ export default function SubtitlePreviewModal({
         ? data.subtitles
         : [];
 
-      // Consume BYOK daily quota OR deduct 5 credits ONLY after Gemini AI succeeded
-      if (useByokNow) {
-        await consumeByokFreeQuota('video_subtitle');
-        setByokQuota(getByokQuotaStatus('video_subtitle'));
-      } else {
-        const deductRes = await deductCredit('video_subtitle');
-        setCreditBalance(getTotalCredits(deductRes.newState));
-      }
-
       if (generated.length === 0) {
         setSubError(
-          'ไม่พบเสียงพูดที่ชัดเจนในวิดีโอนี้ คุณสามารถกด "+ เพิ่มประโยค" เพื่อพิมพ์เองได้ครับ'
+          'ไม่พบเสียงพูดที่ชัดเจนในวิดีโอนี้ (ไม่ได้หักสิทธิ์ BYOK หรือเครดิต) คุณสามารถกด "+ เพิ่มประโยค" เพื่อพิมพ์เองได้ครับ'
         );
         setShowEditorPanel(true);
       } else {
+        // Consume BYOK daily quota OR deduct 5 credits ONLY after Gemini AI returned real subtitles
+        let updatedByokQuota = latestQuota;
+        if (useByokNow) {
+          await consumeByokFreeQuota('video_subtitle');
+          updatedByokQuota = getByokQuotaStatus('video_subtitle');
+          setByokQuota(updatedByokQuota);
+        } else {
+          const deductRes = await deductCredit('video_subtitle');
+          setCreditBalance(getTotalCredits(deductRes.newState));
+        }
+
         setSubtitles(generated);
         setShowSubtitles(true);
         setShowEditorPanel(true);
@@ -388,7 +396,7 @@ export default function SubtitlePreviewModal({
         const aiCount = generated.filter((c) => c.speaker === 'AI').length;
         setGenSummary(
           useByokNow
-            ? `สร้างซับด้วย Gemini AI สำเร็จ (สิทธิ์ฟรี BYOK · 0 เครดิต) · You: ${youCount} ประโยค · AI: ${aiCount} ประโยค`
+            ? `สร้างซับด้วย Gemini AI สำเร็จ (สิทธิ์ฟรี BYOK · เหลือ ${updatedByokQuota.remaining}/${updatedByokQuota.limit} คลิปวันนี้) · You: ${youCount} ประโยค · AI: ${aiCount} ประโยค`
             : `สร้างซับด้วย Gemini AI สำเร็จ (หัก ${SUBTITLE_CREDIT_COST} เครดิต) · You: ${youCount} ประโยค · AI: ${aiCount} ประโยค`
         );
       }
@@ -685,6 +693,12 @@ export default function SubtitlePreviewModal({
                       <span>BYOK ฟรี {byokQuota.remaining}/{byokQuota.limit} คลิปวันนี้ (≤ 5 นาที)</span>
                     </span>
                   )}
+                  {byokQuota.hasKey && !byokQuota.canUseFree && isWithinByokDuration && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
+                      <Key size={11} className="text-amber-600" />
+                      <span>BYOK ครบโควตาวันนี้ (เหลือ {byokQuota.remaining}/{byokQuota.limit})</span>
+                    </span>
+                  )}
                   {creditBalance !== null && (
                     <span className="inline-flex items-center gap-1 text-xs text-slate-600 font-medium tabular-nums">
                       <Zap size={12} className="text-amber-500" />
@@ -847,12 +861,12 @@ export default function SubtitlePreviewModal({
                 type="button"
                 onClick={() => {
                   onClose();
-                  window.dispatchEvent(new CustomEvent('request-login-modal'));
+                  openLoginModal();
                 }}
                 className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors"
               >
                 <LogIn size={12} />
-                <span>เข้าสู่ระบบ</span>
+                <span>เข้าสู่ระบบด้วย Google</span>
               </button>
             )}
           </div>

@@ -1,4 +1,6 @@
 import { RoleplayMission } from './types';
+import { STUDY_EMERGENCY_MISSIONS_PART2 } from './missionsStudyEmergencyPart2';
+import { STUDY_EMERGENCY_MISSIONS_PART3 } from './missionsStudyEmergencyPart3';
 
 export const STUDY_EMERGENCY_MISSIONS: RoleplayMission[] = [
   {
@@ -669,4 +671,6 @@ export const STUDY_EMERGENCY_MISSIONS: RoleplayMission[] = [
       { en: 'When can I pick up the emergency travel document, and do I need to arrive extra early at the airport?', cn: '请问临时旅行证什么时候可以领取？去机场需要比平时更早到吗？', pinyin: 'Qǐngwèn línshí lǚxíngzhèng shénme shíhou kěyǐ lǐngqǔ? Qù jīchǎng xūyào bǐ píngshí gèng zǎo dào ma?', th: 'รับเอกสารเดินทางฉุกเฉินได้กี่โมงครับ และตอนไปสนามบินต้องเผื่อเวลาเพิ่มไหม' },
     ],
   },
+  ...STUDY_EMERGENCY_MISSIONS_PART2,
+  ...STUDY_EMERGENCY_MISSIONS_PART3,
 ];

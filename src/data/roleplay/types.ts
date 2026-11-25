@@ -18,7 +18,7 @@ export interface SurvivalPhrase {
 
 export interface RoleplayMission {
   id: string;
-  number: number; // 1..20 within its category
+  number: number; // 1..60 within its category
   category: RoleplayCategoryId;
   difficulty: RoleplayDifficulty;
   titleTh: string;

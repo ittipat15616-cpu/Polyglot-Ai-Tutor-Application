@@ -26,7 +26,12 @@ const FEATURE_META: Record<ByokQuotaFeature, { labelTh: string; unitTh: string }
   vocab_exam: { labelTh: 'ตรวจข้อสอบคำศัพท์', unitTh: 'ครั้ง' },
   mock_test: { labelTh: 'ตรวจข้อสอบจำลองสอบ (AI)', unitTh: 'ครั้ง' },
   karaoke_translate: { labelTh: 'แปลเพลงใหม่จาก YouTube', unitTh: 'เพลง' },
+  karaoke_explain: { labelTh: 'อธิบายคำศัพท์ในเพลงคาราโอเกะ (AI)', unitTh: 'คำ' },
   video_subtitle: { labelTh: 'ใส่ซับวิดีโอด้วย AI (≤ 5 นาที)', unitTh: 'คลิป' },
+  reading_analyze: { labelTh: 'วิเคราะห์และแปลบทความส่วนตัว', unitTh: 'บทความ' },
+  roleplay_custom: { labelTh: 'สร้างด่านจำลองสถานการณ์เอง (AI)', unitTh: 'ด่าน' },
+  roleplay_report: { labelTh: 'วิเคราะห์ใบสรุปคะแนน Roleplay (AI)', unitTh: 'ครั้ง' },
+  shadowing_analyze: { labelTh: 'วิเคราะห์เสียงฝึกพูดตามประโยค (AI)', unitTh: 'ครั้ง' },
 };
 
 export const ByokQuotaFallbackModal: React.FC<ByokQuotaFallbackModalProps> = ({

@@ -22,6 +22,7 @@ import {
   YouTubeSearchResult,
 } from '../types/karaoke';
 import { getStoredByokKey } from './byokService';
+import { getFirebaseAuthHeaders } from './authHeaders';
 
 const OFFSET_LOCAL_PREFIX = 'karaoke_sync_offset_v1_';
 const CACHED_KEYS_LOCAL = 'karaoke_known_cached_keys_v2';
@@ -540,7 +541,7 @@ export async function translateKaraokeSong(params: {
   const byokKey = params.useByokQuota ? getStoredByokKey() : null;
   const res = await fetch('/api/karaoke/translate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getFirebaseAuthHeaders(),
     body: JSON.stringify({
       ...params.resolved,
       difficulty: params.difficulty,
@@ -550,10 +551,12 @@ export async function translateKaraokeSong(params: {
     }),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err: any = new Error(data.error || 'ไม่สามารถแปลเนื้อเพลงได้');
     err.status = res.status;
+    err.byokInvalidKey = Boolean(data.byokInvalidKey);
+    err.authRequired = Boolean(data.authRequired || (res.status === 401 && !data.byokInvalidKey));
     err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
     throw err;
   }
@@ -593,10 +596,18 @@ export async function explainKaraokeWord(
   const byokKey = getStoredByokKey();
   const res = await fetch('/api/karaoke/explain-word', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getFirebaseAuthHeaders(),
     body: JSON.stringify({ word, lineText, language, byokKey }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'ไม่สามารถอธิบายคำศัพท์ได้');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err: any = new Error(data.error || 'ไม่สามารถอธิบายคำศัพท์ได้');
+    err.status = res.status;
+    err.byokInvalidKey = Boolean(data.byokInvalidKey);
+    err.authRequired = Boolean(data.authRequired || (res.status === 401 && !data.byokInvalidKey));
+    err.byokRequired = Boolean(data.byokRequired || res.status === 403);
+    err.byokQuotaExhausted = Boolean(data.byokQuotaExhausted || res.status === 429);
+    throw err;
+  }
   return data;
 }

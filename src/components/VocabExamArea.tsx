@@ -1,4 +1,5 @@
 import { saveVocabTestResult, loadVocabTestResultsHistory, VocabTestResultRecord } from "../services/userPersistence";
+import { logMistakesBatch } from "../services/mistakeService";
 import { deductCredit, loadUserSubscription, getTotalCredits } from "../services/subscriptionService";
 import {
   consumeByokFreeQuota,
@@ -6,8 +7,11 @@ import {
   getStoredByokKey,
   syncByokDailyUsageWithFirestore,
 } from "../services/byokService";
+import { auth } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { getFirebaseAuthHeaders, openLoginModal } from '../services/authHeaders';
 import React, { useState, useEffect, useRef } from 'react';
-import { History, X, Award, FileSignature, Play, Settings, ArrowRight, CheckCircle, XCircle, RotateCcw, Volume2, VolumeX, Sliders, Languages, Key } from 'lucide-react';
+import { History, X, Award, FileSignature, Play, Settings, ArrowRight, CheckCircle, XCircle, RotateCcw, Volume2, VolumeX, Sliders, Languages, Key, Lock, LogIn, Info } from 'lucide-react';
 import { allCNVocab, allENVocab, VocabWord } from '../data/vocabData';
 import AnnotationToolbar, { AnnotationState } from './AnnotationToolbar';
 import AnnotatableArea from './AnnotatableArea';
@@ -62,17 +66,32 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
   const [history, setHistory] = useState<VocabTestResultRecord[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('vocab_exam'));
+  const [isSignedIn, setIsSignedIn] = useState<boolean>(() => Boolean(auth.currentUser));
+  const [needsLoginMsg, setNeedsLoginMsg] = useState(false);
+  const [gradingNotice, setGradingNotice] = useState<{
+    type: 'byok' | 'credits' | 'local_no_trans' | 'fallback_error';
+    text: string;
+  } | null>(null);
   const [fallbackModal, setFallbackModal] = useState<{ open: boolean; reason: QuotaFallbackReason }>({
     open: false,
     reason: 'byok_daily_exhausted',
   });
 
   useEffect(() => {
-    const refreshQuota = () => setByokQuota(getByokQuotaStatus('vocab_exam'));
+    const refreshQuota = () => {
+      setIsSignedIn(Boolean(auth.currentUser));
+      setByokQuota(getByokQuotaStatus('vocab_exam'));
+    };
     syncByokDailyUsageWithFirestore().then(refreshQuota);
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setIsSignedIn(Boolean(user));
+      if (user) setNeedsLoginMsg(false);
+      refreshQuota();
+    });
     window.addEventListener('byok_key_updated', refreshQuota);
     window.addEventListener('byok_quota_updated', refreshQuota);
     return () => {
+      unsubAuth();
       window.removeEventListener('byok_key_updated', refreshQuota);
       window.removeEventListener('byok_quota_updated', refreshQuota);
     };
@@ -207,6 +226,13 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
   };
 
   const startExam = async () => {
+    if (!auth.currentUser) {
+      setNeedsLoginMsg(true);
+      return;
+    }
+    setNeedsLoginMsg(false);
+    setGradingNotice(null);
+
     // Filter by level
     const filtered = levelFilter === 'ALL' ? fullVocab : fullVocab.filter(v => v.level === levelFilter);
     
@@ -258,6 +284,7 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
     setExamWords(finalWords);
     setCurrentIndex(0);
     setAnswers({});
+    setTimeLeft(30);
     setExamState('TESTING');
     
     // Start first word
@@ -304,22 +331,9 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
   const finishExam = async (forceUseCredits = false) => {
     clearInterval(timerRef.current);
 
-    const quota = getByokQuotaStatus('vocab_exam');
-    const byokKey = getStoredByokKey();
-    const shouldTryByok = !forceUseCredits && quota.hasKey && quota.canUseFree && Boolean(byokKey);
-
-    if (!shouldTryByok) {
-      if (!forceUseCredits && quota.hasKey && !quota.canUseFree) {
-        setFallbackModal({ open: true, reason: 'byok_daily_exhausted' });
-        return;
-      }
-
-      // Deduct 1 credit for submitting vocab exam via server paid key
-      const { success } = await deductCredit('vocab_exam');
-      if (!success) {
-        setFallbackModal({ open: true, reason: 'insufficient_credits' });
-        return;
-      }
+    if (!auth.currentUser) {
+      setNeedsLoginMsg(true);
+      return;
     }
 
     const preliminaryAnswers: Record<string, Answer> = {};
@@ -345,6 +359,24 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
         });
       }
     });
+
+    const quota = getByokQuotaStatus('vocab_exam');
+    const byokKey = getStoredByokKey();
+    const shouldTryByok = !forceUseCredits && quota.hasKey && quota.canUseFree && Boolean(byokKey);
+
+    if (apiPayload.length > 0 && !shouldTryByok) {
+      if (!forceUseCredits && quota.hasKey && !quota.canUseFree) {
+        setFallbackModal({ open: true, reason: 'byok_daily_exhausted' });
+        return;
+      }
+
+      // Deduct 1 credit for submitting vocab exam via server paid key
+      const { success } = await deductCredit('vocab_exam');
+      if (!success) {
+        setFallbackModal({ open: true, reason: 'insufficient_credits' });
+        return;
+      }
+    }
     
     setAnswers(preliminaryAnswers);
     setIsAIGrading(true);
@@ -354,9 +386,7 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
       if (apiPayload.length > 0) {
         const response = await fetch('/api/grade-vocab', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-          },
+          headers: await getFirebaseAuthHeaders(),
           body: JSON.stringify({
             answers: apiPayload,
             lang,
@@ -366,7 +396,12 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
         });
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({}));
-          if (shouldTryByok && (response.status === 429 || errBody.byokQuotaExhausted)) {
+          if (response.status === 401 || errBody.authRequired) {
+            abortedForFallback = true;
+            setNeedsLoginMsg(true);
+            return;
+          }
+          if (shouldTryByok && (response.status === 429 || errBody.byokQuotaExhausted || errBody.byokInvalidKey)) {
             abortedForFallback = true;
             setFallbackModal({ open: true, reason: 'byok_google_429' });
             return;
@@ -377,7 +412,17 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
 
         if (shouldTryByok) {
           await consumeByokFreeQuota('vocab_exam');
-          setByokQuota(getByokQuotaStatus('vocab_exam'));
+          const nextQuota = getByokQuotaStatus('vocab_exam');
+          setByokQuota(nextQuota);
+          setGradingNotice({
+            type: 'byok',
+            text: `ตรวจคำแปลด้วย AI สำเร็จ (สิทธิ์ฟรี BYOK) • สิทธิ์สอบศัพท์วันนี้เหลือ ${nextQuota.remaining}/${nextQuota.limit} ครั้ง`,
+          });
+        } else {
+          setGradingNotice({
+            type: 'credits',
+            text: 'ตรวจคำแปลด้วย AI สำเร็จ (หัก 1 เครดิต)',
+          });
         }
         
         const finalAnswers = { ...preliminaryAnswers };
@@ -392,6 +437,10 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
         evaluatedAnswers = finalAnswers;
       } else {
         evaluatedAnswers = preliminaryAnswers;
+        setGradingNotice({
+          type: 'local_no_trans',
+          text: 'ไม่ได้พิมพ์คำแปลภาษาไทย จึงตรวจเฉพาะการสะกดคำอัตโนมัติ (ไม่หักสิทธิ์ BYOK หรือเครดิต)',
+        });
       }
     } catch (e) {
       console.error("AI grading failed", e);
@@ -417,6 +466,11 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
       });
       setAnswers(fallbackAnswers);
       evaluatedAnswers = fallbackAnswers;
+      const errReason = e instanceof Error && e.message ? ` (${e.message.slice(0, 120)})` : '';
+      setGradingNotice({
+        type: 'fallback_error',
+        text: `เชื่อมต่อ AI ตรวจคำแปลไม่สำเร็จชั่วคราว${errReason} จึงใช้การตรวจคำแปลเบื้องต้นแทน (ไม่ได้หักสิทธิ์ BYOK)`,
+      });
     } finally {
       setIsAIGrading(false);
       if (!abortedForFallback) {
@@ -449,6 +503,42 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
           items,
           createdAt: Date.now()
         });
+
+        // Auto-capture wrong answers into Smart Mistake Notebook (0 Baht)
+        const missedVocab = examWords
+          .map((w) => {
+            const ans = evaluatedAnswers[w.id];
+            const wordOk = Boolean(ans?.isWordCorrect);
+            const transOk = Boolean(ans?.isTranslationCorrect);
+            if (wordOk && transOk) return null;
+
+            const reading = lang === 'CN' ? w.pinyin : w.phonetic;
+            const mainTrans = w.translations[0] || '';
+            const askSpelling = !wordOk && transOk;
+
+            return {
+              lang: lang === 'CN' ? ('CN' as const) : ('EN' as const),
+              source: 'vocab_exam' as const,
+              sourceLabel: `สอบศัพท์ (${levelFilter === 'ALL' ? lang : levelFilter})`,
+              prompt: askSpelling
+                ? `คำที่มีความหมายว่า "${mainTrans}" เขียนเป็นภาษา${lang === 'CN' ? 'จีน' : 'อังกฤษ'}ว่าอย่างไร?`
+                : `คำศัพท์ "${w.word}"${reading ? ` (${reading})` : ''} แปลว่าอะไร?`,
+              reading,
+              userWrongAnswer: askSpelling
+                ? ans?.userWord || '(ไม่ได้ตอบ)'
+                : ans?.userTranslation || ans?.userWord || '(ไม่ได้ตอบ)',
+              correctAnswer: askSpelling ? w.word : mainTrans,
+              acceptedAnswers: askSpelling ? [w.word] : w.translations,
+              explanationTh: `คำศัพท์: ${w.word}${reading ? ` (${reading})` : ''} — ความหมาย: ${w.translations.join(', ')}`,
+              vocabWord: w.word,
+              vocabMeaningTh: mainTrans,
+            };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null);
+
+        if (missedVocab.length > 0) {
+          logMistakesBatch(missedVocab).catch(() => {});
+        }
       }
     }
   };
@@ -607,7 +697,21 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                   </div>
                 </div>
 
-                {byokQuota.hasKey ? (
+                {!isSignedIn ? (
+                  <div className="mb-3 p-3 rounded-xl border border-rose-200 bg-rose-50/90 text-xs text-rose-800 space-y-2">
+                    <div className="flex items-start gap-1.5 font-semibold">
+                      <Lock size={14} className="shrink-0 mt-0.5 text-rose-600" />
+                      <span>กรุณาเข้าสู่ระบบด้วย Google ก่อนเริ่มสอบศัพท์ (ระบบใช้ AI ตรวจคำแปล)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openLoginModal()}
+                      className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <LogIn size={14} /> เข้าสู่ระบบด้วย Google
+                    </button>
+                  </div>
+                ) : byokQuota.hasKey ? (
                   <div className={`mb-3 px-3 py-2 rounded-xl border flex items-center justify-between text-xs ${
                     byokQuota.canUseFree
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
@@ -620,7 +724,7 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                     <span className="font-bold px-2 py-0.5 rounded-md bg-white/80">
                       {byokQuota.canUseFree
                         ? `ฟรี! เหลือ ${byokQuota.remaining}/${byokQuota.limit}`
-                        : 'ใช้ต่อ 1 เครดิต/ครั้ง'}
+                        : `เหลือ 0/${byokQuota.limit} (1 เครดิต)`}
                     </span>
                   </div>
                 ) : (
@@ -634,10 +738,20 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                   </div>
                 )}
 
+                {needsLoginMsg && isSignedIn === false && (
+                  <div className="mb-3 text-[11px] font-semibold text-rose-700 text-center">
+                    ต้องเข้าสู่ระบบก่อนจึงจะเริ่มสอบหรือใช้ BYOK ได้ครับ
+                  </div>
+                )}
+
                 <button 
                   id="tutorial-exam-start-btn"
                   onClick={startExam}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-sm hover:shadow active:scale-[0.99]"
+                  className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition-all shadow-sm hover:shadow active:scale-[0.99] ${
+                    !isSignedIn
+                      ? 'bg-slate-300 text-slate-600 hover:bg-slate-400/80'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
                 >
                   <Play size={18} /> เริ่มสอบ ({estimatedCount} คำ)
                 </button>
@@ -675,8 +789,20 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
               <div className="w-full h-full flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-white/50 p-6 md:p-12 relative">
                 
                 {/* Timer & Progress */}
-                <div className="absolute top-6 left-6 text-sm font-medium text-gray-500">
-                  ข้อ {currentIndex + 1} / {examWords.length}
+                <div className="absolute top-6 left-6 flex items-center gap-2.5 flex-wrap">
+                  <span className="text-sm font-medium text-gray-500">
+                    ข้อ {currentIndex + 1} / {examWords.length}
+                  </span>
+                  {byokQuota.hasKey && (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                      byokQuota.canUseFree
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : 'bg-amber-50 border-amber-200 text-amber-700'
+                    }`}>
+                      <Key size={11} />
+                      BYOK เหลือ {byokQuota.remaining}/{byokQuota.limit} วันนี้
+                    </span>
+                  )}
                 </div>
                 <div className={`absolute top-6 right-6 text-2xl font-bold ${timeLeft <= 5 ? 'text-red-500' : 'text-indigo-600'}`}>
                   00:{timeLeft.toString().padStart(2, '0')}
@@ -754,6 +880,19 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                     </div>
                   </div>
 
+                  {needsLoginMsg && (
+                    <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center justify-between gap-2">
+                      <span>กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนส่งคำตอบให้ AI ตรวจ</span>
+                      <button
+                        type="button"
+                        onClick={() => openLoginModal()}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold shrink-0 cursor-pointer"
+                      >
+                        เข้าสู่ระบบ
+                      </button>
+                    </div>
+                  )}
+
                   <div className="mt-8 flex justify-end">
                     <button 
                       onClick={handleNextWord}
@@ -761,7 +900,11 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                     >
                       {currentIndex === examWords.length - 1 ? (
                         <>
-                          <span>ส่งคำตอบ (ใช้ 1 เครดิต ⚡)</span>
+                          <span>
+                            {byokQuota.canUseFree
+                              ? `ส่งคำตอบ (ฟรี BYOK · เหลือ ${byokQuota.remaining}/${byokQuota.limit})`
+                              : 'ส่งคำตอบ (ใช้ 1 เครดิต ⚡)'}
+                          </span>
                           <ArrowRight size={20} />
                         </>
                       ) : (
@@ -790,9 +933,44 @@ export default function VocabExamArea({ activeLang }: VocabExamAreaProps) {
                       <span className="text-4xl font-black">{correctTrans}<span className="text-lg text-blue-600/70">/{totalQuestions}</span></span>
                     </div>
                   </div>
+
+                  {/* Live BYOK Quota & Grading Notice */}
+                  {(gradingNotice || byokQuota.hasKey) && (
+                    <div className="mt-5 max-w-xl mx-auto flex flex-col items-center gap-2">
+                      {gradingNotice && (
+                        <div className={`w-full px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 ${
+                          gradingNotice.type === 'byok'
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : gradingNotice.type === 'fallback_error'
+                            ? 'bg-amber-50 border-amber-200 text-amber-800'
+                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}>
+                          {gradingNotice.type === 'byok' ? <Key size={15} className="shrink-0 text-emerald-600" /> : <Info size={15} className="shrink-0" />}
+                          <span>{gradingNotice.text}</span>
+                        </div>
+                      )}
+                      {byokQuota.hasKey && (
+                        <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold ${
+                          byokQuota.canUseFree
+                            ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+                            : 'bg-amber-50/90 border-amber-200 text-amber-800'
+                        }`}>
+                          <Key size={13} />
+                          <span>
+                            สิทธิ์ฟรี BYOK สอบศัพท์วันนี้: เหลือ {byokQuota.remaining}/{byokQuota.limit} ครั้ง
+                            {!byokQuota.canUseFree && ' (ครบสิทธิ์รายวันแล้ว — รอบถัดไปใช้ 1 เครดิต)'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <button 
-                    onClick={() => setExamState('SETUP')}
-                    className="mt-8 mx-auto flex items-center gap-2 text-indigo-600 font-semibold hover:text-indigo-800"
+                    onClick={() => {
+                      setGradingNotice(null);
+                      setExamState('SETUP');
+                    }}
+                    className="mt-6 mx-auto flex items-center gap-2 text-indigo-600 font-semibold hover:text-indigo-800"
                   >
                     <RotateCcw size={18} /> สอบใหม่อีกครั้ง
                   </button>

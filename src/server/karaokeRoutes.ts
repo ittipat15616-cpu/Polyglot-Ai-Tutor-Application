@@ -2,10 +2,17 @@ import express from "express";
 import ytSearch from "yt-search";
 import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import {
+  ByokInvalidKeyError,
   ByokQuotaExhaustedError,
   generateContentWithByokFallback,
   isQuotaOrRateLimitError,
+  safeParseGeminiJson,
 } from "./byokGeminiHelper";
+import {
+  extractBearerToken,
+  requireFirebaseAuth,
+  verifyFirebaseIdToken,
+} from "./authMiddleware";
 
 export interface RawLyricLine {
   index: number;
@@ -826,6 +833,15 @@ export function registerKaraokeRoutes(
         }
       }
 
+      // Any uncached translation invokes a Gemini API Key (BYOK or Server) -> strictly require Google Sign-In
+      const verifiedUser = await verifyFirebaseIdToken(extractBearerToken(req));
+      if (!verifiedUser) {
+        return res.status(401).json({
+          authRequired: true,
+          error: "กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนใช้ AI แปลเพลงใหม่หรือใช้งาน BYOK",
+        });
+      }
+
       const lang: "en" | "zh" = language === "zh" ? "zh" : "en";
       const cappedLines: RawLyricLine[] = rawLines.slice(0, 180);
 
@@ -878,6 +894,7 @@ ${JSON.stringify(uniqueLines)}`;
         contents: prompt,
         useByokQuota: Boolean(useByokQuota),
         byokKey: byokKey || null,
+        byokProfile: "flash38",
         serverDefaultModel: "gemini-4-hydrogen",
         serverThinkingLevel: ThinkingLevel.LOW,
         getServerClient: getServerGeminiClient,
@@ -915,8 +932,7 @@ ${JSON.stringify(uniqueLines)}`;
         },
       });
 
-      const cleanJson = (aiRes.text || "{}").replace(/```json/gi, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleanJson);
+      const parsed = safeParseGeminiJson(aiRes.text || "{}");
 
       const transByUnique = new Map<number, { th: string; py?: string }>();
       if (Array.isArray(parsed.translations)) {
@@ -984,6 +1000,12 @@ ${JSON.stringify(uniqueLines)}`;
         modelUsed: aiRes.modelUsed,
       });
     } catch (err: any) {
+      if (err instanceof ByokInvalidKeyError) {
+        return res.status(400).json({
+          error: err.message,
+          byokInvalidKey: true,
+        });
+      }
       if (err instanceof ByokQuotaExhaustedError) {
         return res.status(429).json({
           error: err.message,
@@ -1001,55 +1023,91 @@ ${JSON.stringify(uniqueLines)}`;
     }
   });
 
-  // 6. Tap-to-Explain a word/phrase inside a lyric line (lightweight Flash call)
-  app.post("/api/karaoke/explain-word", async (req, res) => {
+  // 6. Tap-to-Explain a word/phrase inside a lyric line
+  // STRICTLY BYOK-ONLY (0 Baht owner server cost guaranteed — NEVER falls back to server key!)
+  app.post("/api/karaoke/explain-word", requireFirebaseAuth, async (req, res) => {
     try {
       const { word, lineText, language, byokKey } = req.body || {};
-      if (!word) return res.status(400).json({ error: "Missing word" });
+      const cleanWord = String(word || "").trim().slice(0, 120);
+      if (!cleanWord) return res.status(400).json({ error: "Missing word" });
+
+      const cleanByok = typeof byokKey === "string" ? byokKey.trim() : "";
+      if (cleanByok.length <= 15) {
+        return res.status(403).json({
+          byokRequired: true,
+          error: "ต้องเชื่อมคีย์ฟรี BYOK ก่อนใช้ AI อธิบายคำนอกพจนานุกรม (คำในคลังศัพท์และพจนานุกรมในแอปยังดูได้ฟรีตลอด)",
+        });
+      }
 
       const isChinese = language === "zh";
-      const prompt = `Explain the ${isChinese ? "Mandarin Chinese" : "English"} word/phrase "${word}" as used in the song lyric line: "${lineText || ""}".
-Respond strictly in JSON (Thai explanations):
-{
-  "word": "${word}",
-  "reading": "${isChinese ? "tone-marked Pinyin" : "simple pronunciation guide"}",
-  "meaningTh": "concise Thai meaning",
-  "contextExplanationTh": "1-2 short Thai sentences explaining nuance/slang/grammar in this exact lyric",
-  "example": "1 short natural example sentence with Thai translation"
-}`;
+      const safeLine = String(lineText || "").trim().slice(0, 300);
+      const prompt = `Explain the ${isChinese ? "Mandarin Chinese" : "English"} word or phrase in Thai for a learner listening to a song.
+Target word/phrase: ${JSON.stringify(cleanWord)}
+Lyric line context: ${JSON.stringify(safeLine)}
 
-      const hasByok = typeof byokKey === "string" && byokKey.trim().length > 15;
+Rules:
+- Respond ONLY with valid JSON matching the schema.
+- Keep explanations concise, natural Thai, friendly, and accurate to this lyric context.`;
+
+      const explainSchema = {
+        type: Type.OBJECT,
+        properties: {
+          word: { type: Type.STRING },
+          reading: {
+            type: Type.STRING,
+            description: isChinese ? "tone-marked Pinyin" : "simple pronunciation guide / IPA",
+          },
+          meaningTh: { type: Type.STRING, description: "concise Thai meaning" },
+          contextExplanationTh: {
+            type: Type.STRING,
+            description: "1-2 short Thai sentences explaining nuance, slang, or grammar in this exact lyric",
+          },
+          example: {
+            type: Type.STRING,
+            description: "1 short natural example sentence with Thai translation",
+          },
+        },
+        required: ["word", "reading", "meaningTh", "contextExplanationTh", "example"],
+      };
+
       const aiRes = await generateContentWithByokFallback({
         contents: prompt,
-        useByokQuota: hasByok,
-        byokKey: hasByok ? byokKey : null,
-        serverDefaultModel: "gemini-3.8-flash",
-        getServerClient: getServerGeminiClient,
+        useByokQuota: true,
+        strictByokOnly: true,
+        byokKey: cleanByok,
+        byokProfile: "flash_lite",
         config: {
           responseMimeType: "application/json",
+          responseSchema: explainSchema,
         },
       });
 
-      const clean = (aiRes.text || "{}").replace(/```json/gi, "").replace(/```/g, "").trim();
-      res.json(JSON.parse(clean));
+      const parsed = safeParseGeminiJson(aiRes.text || "{}");
+      return res.json({
+        word: String(parsed?.word || cleanWord),
+        reading: parsed?.reading ? String(parsed.reading) : "",
+        meaningTh: String(parsed?.meaningTh || "ไม่พบคำแปล"),
+        contextExplanationTh: String(parsed?.contextExplanationTh || ""),
+        example: parsed?.example ? String(parsed.example) : "",
+        modelUsed: aiRes.modelUsed,
+      });
     } catch (err: any) {
-      // Fallback to server key if BYOK key hit 429 on a tiny word lookup
-      if (err instanceof ByokQuotaExhaustedError) {
-        try {
-          const { word, lineText, language } = req.body || {};
-          const isChinese = language === "zh";
-          const aiRes = await generateContentWithByokFallback({
-            contents: `Explain "${word}" in lyric "${lineText || ""}" (${isChinese ? "Chinese" : "English"}) in Thai JSON: {"word":"...","reading":"...","meaningTh":"...","contextExplanationTh":"...","example":"..."}`,
-            useByokQuota: false,
-            serverDefaultModel: "gemini-3.8-flash",
-            getServerClient: getServerGeminiClient,
-            config: { responseMimeType: "application/json" },
-          });
-          const clean = (aiRes.text || "{}").replace(/```json/gi, "").replace(/```/g, "").trim();
-          return res.json(JSON.parse(clean));
-        } catch {}
+      if (err instanceof ByokInvalidKeyError) {
+        return res.status(400).json({
+          byokInvalidKey: true,
+          error: err.message,
+        });
       }
-      res.status(500).json({ error: "ไม่สามารถอธิบายคำศัพท์นี้ได้ชั่วคราว" });
+      if (err instanceof ByokQuotaExhaustedError || isQuotaOrRateLimitError(err)) {
+        return res.status(429).json({
+          byokQuotaExhausted: true,
+          error: "คีย์ฟรี BYOK ติดลิมิตชั่วคราว (429) กรุณารอสักครู่แล้วลองแตะใหม่อีกครั้ง",
+        });
+      }
+      console.error("[Karaoke Explain-Word] Error:", err?.message || err);
+      return res.status(500).json({
+        error: err?.message || "ไม่สามารถอธิบายคำศัพท์นี้ได้ชั่วคราว กรุณาลองแตะใหม่อีกครั้ง",
+      });
     }
   });
 }

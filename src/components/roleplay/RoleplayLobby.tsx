@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Compass,
@@ -13,11 +13,14 @@ import {
   GraduationCap,
   ChevronRight,
   RotateCcw,
+  Shuffle,
+  X,
 } from 'lucide-react';
 import {
   ALL_ROLEPLAY_MISSIONS,
   DIFFICULTY_META,
   ROLEPLAY_CATEGORIES,
+  getCategoryMeta,
   RoleplayCategoryId,
   RoleplayDifficulty,
   RoleplayMission,
@@ -50,7 +53,13 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<RoleplayCategoryId>('travel');
   const [difficultyFilter, setDifficultyFilter] = useState<'all' | RoleplayDifficulty>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'todo' | 'done'>('all');
+  const [sortBy, setSortBy] = useState<'number' | 'easy_first' | 'hard_first' | 'todo_first'>('number');
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(24);
+
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [selectedCategory, difficultyFilter, statusFilter, sortBy, searchQuery]);
 
   const stats = useMemo(() => {
     let completedCount = 0;
@@ -89,7 +98,8 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
   const trimmedQuery = searchQuery.trim().toLowerCase();
 
   const filteredMissions = useMemo(() => {
-    return ALL_ROLEPLAY_MISSIONS.filter((m) => {
+    const diffRank: Record<RoleplayDifficulty, number> = { easy: 1, medium: 2, hard: 3 };
+    const matched = ALL_ROLEPLAY_MISSIONS.filter((m) => {
       // When searching globally, search across all 5 categories; otherwise filter by selected category
       if (!trimmedQuery && m.category !== selectedCategory) return false;
       if (difficultyFilter !== 'all' && m.difficulty !== difficultyFilter) return false;
@@ -105,8 +115,37 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
       }
       return true;
     });
-  }, [selectedCategory, difficultyFilter, statusFilter, trimmedQuery, progressMap]);
 
+    if (sortBy === 'number') return matched;
+    return [...matched].sort((a, b) => {
+      if (sortBy === 'easy_first') {
+        const d = diffRank[a.difficulty] - diffRank[b.difficulty];
+        return d !== 0 ? d : a.number - b.number;
+      }
+      if (sortBy === 'hard_first') {
+        const d = diffRank[b.difficulty] - diffRank[a.difficulty];
+        return d !== 0 ? d : a.number - b.number;
+      }
+      const aDone = progressMap[a.id]?.completed ? 1 : 0;
+      const bDone = progressMap[b.id]?.completed ? 1 : 0;
+      return aDone !== bDone ? aDone - bDone : a.number - b.number;
+    });
+  }, [selectedCategory, difficultyFilter, statusFilter, sortBy, trimmedQuery, progressMap]);
+
+  const visibleMissions = useMemo(
+    () => filteredMissions.slice(0, visibleCount),
+    [filteredMissions, visibleCount]
+  );
+
+  const handleRandomMission = () => {
+    const pool = filteredMissions.length > 0 ? filteredMissions : ALL_ROLEPLAY_MISSIONS;
+    const uncompleted = pool.filter((m) => !progressMap[m.id]?.completed);
+    const source = uncompleted.length > 0 ? uncompleted : pool;
+    const pick = source[Math.floor(Math.random() * source.length)];
+    if (pick) onSelectMission(pick);
+  };
+
+  const hasActiveFilters = Boolean(trimmedQuery) || difficultyFilter !== 'all' || statusFilter !== 'all' || sortBy !== 'number';
   const activeCategoryMeta = ROLEPLAY_CATEGORIES.find((c) => c.id === selectedCategory) || ROLEPLAY_CATEGORIES[0];
   const progressPercent = stats.totalMissions > 0
     ? Math.round((stats.completedCount / stats.totalMissions) * 100)
@@ -121,7 +160,11 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600">
               <span>Real-Life Roleplay Missions</span>
               <span className="text-slate-300">·</span>
-              <span>{activeLang === 'CN' ? 'ฝึกพูดภาษาจีน 100 ด่าน' : 'ฝึกพูดภาษาอังกฤษ 100 ด่าน'}</span>
+              <span>
+                {activeLang === 'CN'
+                  ? `ฝึกพูดภาษาจีน ${stats.totalMissions} ด่าน`
+                  : `ฝึกพูดภาษาอังกฤษ ${stats.totalMissions} ด่าน`}
+              </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               จำลองสถานการณ์จริง ฝึกพูดโต้ตอบกับคู่สนทนา AI
@@ -131,7 +174,16 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleRandomMission}
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold transition-colors whitespace-nowrap cursor-pointer"
+              title="สุ่มเลือกด่านที่ยังไม่ผ่านจากตัวกรองปัจจุบัน"
+            >
+              <Shuffle className="w-4 h-4 text-indigo-600" />
+              <span>สุ่มด่านท้าทาย</span>
+            </button>
             <button
               type="button"
               onClick={onOpenCustomMission}
@@ -230,8 +282,18 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="ค้นหาด่าน เช่น สนามบิน, สัมภาษณ์..."
-              className="w-full sm:w-52 pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              className="w-full sm:w-56 pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label="ล้างคำค้นหา"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Difficulty select */}
@@ -258,6 +320,35 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
             <option value="todo">ยังไม่ผ่าน</option>
             <option value="done">ผ่านแล้ว</option>
           </select>
+
+          {/* Sort select */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'number' | 'easy_first' | 'hard_first' | 'todo_first')}
+            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-indigo-400 cursor-pointer"
+            aria-label="เรียงลำดับด่าน"
+          >
+            <option value="number">เรียงตามลำดับ</option>
+            <option value="easy_first">ง่าย → ยาก</option>
+            <option value="hard_first">ยาก → ง่าย</option>
+            <option value="todo_first">ยังไม่ผ่านก่อน</option>
+          </select>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setDifficultyFilter('all');
+                setStatusFilter('all');
+                setSortBy('number');
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-indigo-700 bg-white border border-slate-200 rounded-lg hover:border-indigo-300 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              รีเซ็ต
+            </button>
+          )}
         </div>
       </div>
 
@@ -292,102 +383,137 @@ export const RoleplayLobby: React.FC<RoleplayLobbyProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredMissions.map((mission) => {
-            const rec = progressMap[mission.id];
-            const isCompleted = Boolean(rec?.completed);
-            const stars = rec?.stars || 0;
-            const diffMeta = DIFFICULTY_META[mission.difficulty];
-            const levelCode = activeLang === 'CN' ? diffMeta.hskCn : diffMeta.cefrEn;
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-slate-500 px-1 tabular-nums">
+            <span>
+              กำลังแสดง {visibleMissions.length} จาก {filteredMissions.length} ด่าน
+            </span>
+          </div>
 
-            return (
-              <button
-                key={mission.id}
-                type="button"
-                onClick={() => onSelectMission(mission)}
-                className={`group text-left bg-white rounded-2xl border p-4 sm:p-5 transition-all flex flex-col justify-between gap-3.5 cursor-pointer hover:shadow-md ${
-                  isCompleted
-                    ? 'border-emerald-200/90 hover:border-emerald-400'
-                    : 'border-slate-200 hover:border-indigo-300'
-                }`}
-              >
-                <div className="space-y-2">
-                  {/* Top metadata line: clean inline text with dot separators */}
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-1.5 min-w-0 truncate">
-                      <span className="font-bold text-slate-400 tabular-nums">
-                        #{String(mission.number).padStart(2, '0')}
-                      </span>
-                      <span className="text-slate-300">·</span>
-                      <span className={`font-semibold ${diffMeta.colorClass}`}>
-                        {diffMeta.labelTh} ({levelCode})
-                      </span>
-                    </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {visibleMissions.map((mission) => {
+              const rec = progressMap[mission.id];
+              const isCompleted = Boolean(rec?.completed);
+              const stars = rec?.stars || 0;
+              const diffMeta = DIFFICULTY_META[mission.difficulty];
+              const levelCode = activeLang === 'CN' ? diffMeta.hskCn : diffMeta.cefrEn;
 
-                    {isCompleted && (
-                      <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold shrink-0">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        ผ่านแล้ว
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Title */}
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-700 transition-colors leading-snug">
-                      {mission.titleTh}
-                    </h3>
-                    <div className="text-xs text-slate-400 font-medium mt-0.5 truncate">
-                      {mission.titleEn}
-                    </div>
-                  </div>
-
-                  {/* Scenario preview */}
-                  <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 leading-relaxed">
-                    {mission.scenarioTh}
-                  </p>
-                </div>
-
-                {/* Card Footer: Character & Stars */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <div className="min-w-0 space-y-0.5">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium truncate">
-                      <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">
-                        {mission.aiRoleName} ({mission.aiRoleTitleTh})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
-                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate">{mission.location}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    {stars > 0 ? (
-                      <div className="flex items-center gap-0.5" title={`สถิติสูงสุด ${stars}/3 ดาว`}>
-                        {[1, 2, 3].map((n) => (
-                          <Star
-                            key={n}
-                            className={`w-4 h-4 ${
-                              n <= stars
-                                ? 'fill-amber-400 text-amber-500'
-                                : 'text-slate-200'
-                            }`}
-                          />
-                        ))}
+              return (
+                <button
+                  key={mission.id}
+                  type="button"
+                  onClick={() => onSelectMission(mission)}
+                  className={`group text-left bg-white rounded-2xl border p-4 sm:p-5 transition-all flex flex-col justify-between gap-3.5 cursor-pointer hover:shadow-md ${
+                    isCompleted
+                      ? 'border-emerald-200/90 hover:border-emerald-400'
+                      : 'border-slate-200 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    {/* Top metadata line: clean inline text with dot separators */}
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0 truncate">
+                        <span className="font-bold text-slate-400 tabular-nums">
+                          #{String(mission.number).padStart(2, '0')}
+                        </span>
+                        <span className="text-slate-300">·</span>
+                        <span className={`font-semibold ${diffMeta.colorClass}`}>
+                          {diffMeta.labelTh} ({levelCode})
+                        </span>
+                        {trimmedQuery && (
+                          <>
+                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-500 truncate">
+                              {getCategoryMeta(mission.category).shortNameTh}
+                            </span>
+                          </>
+                        )}
                       </div>
-                    ) : (
-                      <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-indigo-600 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
-                        ดูภารกิจ
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </span>
-                    )}
+
+                      {isCompleted && (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold shrink-0">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          ผ่านแล้ว
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Title */}
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-700 transition-colors leading-snug">
+                        {mission.titleTh}
+                      </h3>
+                      <div className="text-xs text-slate-400 font-medium mt-0.5 truncate">
+                        {mission.titleEn}
+                      </div>
+                    </div>
+
+                    {/* Scenario preview */}
+                    <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 leading-relaxed">
+                      {mission.scenarioTh}
+                    </p>
                   </div>
-                </div>
+
+                  {/* Card Footer: Character & Stars */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium truncate">
+                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">
+                          {mission.aiRoleName} ({mission.aiRoleTitleTh})
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
+                        <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{mission.location}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {stars > 0 ? (
+                        <div className="flex items-center gap-0.5" title={`สถิติสูงสุด ${stars}/3 ดาว`}>
+                          {[1, 2, 3].map((n) => (
+                            <Star
+                              key={n}
+                              className={`w-4 h-4 ${
+                                n <= stars
+                                  ? 'fill-amber-400 text-amber-500'
+                                  : 'text-slate-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-indigo-600 group-hover:translate-x-0.5 transition-transform whitespace-nowrap">
+                          ดูภารกิจ
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {visibleCount < filteredMissions.length && (
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((prev) => prev + 24)}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-700 text-sm font-semibold text-slate-700 shadow-xs transition-colors cursor-pointer"
+              >
+                แสดงเพิ่มอีก {Math.min(24, filteredMissions.length - visibleCount)} ด่าน (เหลือ {filteredMissions.length - visibleCount} ด่าน)
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setVisibleCount(filteredMissions.length)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors cursor-pointer"
+              >
+                แสดงทั้งหมด ({filteredMissions.length})
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

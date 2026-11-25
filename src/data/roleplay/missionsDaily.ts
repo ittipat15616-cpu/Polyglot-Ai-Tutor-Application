@@ -1,4 +1,6 @@
 import { RoleplayMission } from './types';
+import { DAILY_MISSIONS_PART2 } from './missionsDailyPart2';
+import { DAILY_MISSIONS_PART3 } from './missionsDailyPart3';
 
 export const DAILY_MISSIONS: RoleplayMission[] = [
   {
@@ -667,4 +669,6 @@ export const DAILY_MISSIONS: RoleplayMission[] = [
       { en: 'Could you give me a written total estimate and tell me what warranty is included?', cn: '请给我一份书面总报价单，并告诉我包含多久的保修？', pinyin: 'Qǐng gěi wǒ yí fèn shūmiàn zǒng bàojiàdān, bìng gàosu wǒ bāohán duōjiǔ de bǎoxiū?', th: 'ขอใบเสนอราคารวมสุทธิพร้อมบอกระยะเวลารับประกันงานซ่อมให้หน่อยครับ' },
     ],
   },
+  ...DAILY_MISSIONS_PART2,
+  ...DAILY_MISSIONS_PART3,
 ];

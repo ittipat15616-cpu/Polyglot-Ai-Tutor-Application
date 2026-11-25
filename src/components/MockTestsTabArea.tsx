@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Clock, ChevronLeft, Award, History, CheckCircle, XCircle, Sparkles, X } from 'lucide-react';
+import { FileText, Clock, ChevronLeft, Award, History, CheckCircle, XCircle, Sparkles, X, Key } from 'lucide-react';
 import MockTestArea from './MockTestArea';
 import IeltsMockTestArea from './IeltsMockTestArea';
 import ToeicMockTestArea from './ToeicMockTestArea';
 import { loadMockTestResultsHistory, MockTestResultRecord } from '../services/userPersistence';
+import { getByokQuotaStatus, syncByokDailyUsageWithFirestore } from '../services/byokService';
 
 const hskExamsData: Record<string, { id: string, name: string, videoId: string }[]> = {
   HSK1: [
@@ -94,6 +95,18 @@ export default function MockTestsTabArea({ activeLang, onAskAI }: { activeLang?:
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [history, setHistory] = useState<MockTestResultRecord[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [byokQuota, setByokQuota] = useState(() => getByokQuotaStatus('mock_test'));
+
+  useEffect(() => {
+    const refreshQuota = () => setByokQuota(getByokQuotaStatus('mock_test'));
+    syncByokDailyUsageWithFirestore().then(refreshQuota);
+    window.addEventListener('byok_key_updated', refreshQuota);
+    window.addEventListener('byok_quota_updated', refreshQuota);
+    return () => {
+      window.removeEventListener('byok_key_updated', refreshQuota);
+      window.removeEventListener('byok_quota_updated', refreshQuota);
+    };
+  }, []);
 
   const fetchHistory = async () => {
     const list = await loadMockTestResultsHistory();
@@ -136,6 +149,23 @@ export default function MockTestsTabArea({ activeLang, onAskAI }: { activeLang?:
               <History size={18} /> ประวัติผลการสอบย้อนหลัง
             </button>
           </div>
+          {byokQuota.hasKey && (
+            <div className={`mb-6 px-4 py-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs sm:text-sm font-semibold ${
+              byokQuota.canUseFree
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-amber-50 border-amber-200 text-amber-800'
+            }`}>
+              <span className="flex items-center gap-2">
+                <Key size={15} className="shrink-0" />
+                สิทธิ์ฟรี BYOK ตรวจข้อสอบจำลองสอบ (AI) วันนี้
+              </span>
+              <span className="font-bold px-2.5 py-0.5 rounded-lg bg-white/80">
+                {byokQuota.canUseFree
+                  ? `เหลือ ${byokQuota.remaining}/${byokQuota.limit} ครั้ง`
+                  : `เหลือ 0/${byokQuota.limit} (ครบสิทธิ์วันนี้ · ใช้ต่อ 3 เครดิต)`}
+              </span>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <button
               id="tutorial-mock-ielts-category"
@@ -373,6 +403,24 @@ export default function MockTestsTabArea({ activeLang, onAskAI }: { activeLang?:
             <History size={18} /> ประวัติผลการสอบย้อนหลัง
           </button>
         </div>
+
+        {byokQuota.hasKey && (
+          <div className={`-mt-3 px-4 py-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs sm:text-sm font-semibold ${
+            byokQuota.canUseFree
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border-amber-200 text-amber-800'
+          }`}>
+            <span className="flex items-center gap-2">
+              <Key size={15} className="shrink-0" />
+              สิทธิ์ฟรี BYOK ตรวจข้อสอบ HSK พาร์ทเขียน (AI) วันนี้
+            </span>
+            <span className="font-bold px-2.5 py-0.5 rounded-lg bg-white/80">
+              {byokQuota.canUseFree
+                ? `เหลือ ${byokQuota.remaining}/${byokQuota.limit} ครั้ง`
+                : `เหลือ 0/${byokQuota.limit} (ครบสิทธิ์วันนี้ · ใช้ต่อ 3 เครดิต)`}
+            </span>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Object.keys(hskExamsData).map((catId) => (

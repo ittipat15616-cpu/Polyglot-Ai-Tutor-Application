@@ -1,4 +1,6 @@
 import { RoleplayMission } from './types';
+import { WORK_MISSIONS_PART2 } from './missionsWorkPart2';
+import { WORK_MISSIONS_PART3 } from './missionsWorkPart3';
 
 export const WORK_MISSIONS: RoleplayMission[] = [
   {
@@ -669,4 +671,6 @@ export const WORK_MISSIONS: RoleplayMission[] = [
       { en: 'I really appreciate the counter-offer, but I’m committed to this new chapter and will ensure a smooth handover.', cn: '非常感谢您的挽留，但我已经决定迈向新阶段，我一定会做好完整的交接工作。', pinyin: 'Fēicháng gǎnxiè nín de wǎnliú, dàn wǒ yǐjīng juédìng màixiàng xīn jiēduàn, wǒ yídìng huì zuòhǎo wánzhěng de jiāojiē gōngzuò.', th: 'ขอบคุณมากจริงๆ สำหรับข้อเสนอครับ แต่ผมตัดสินใจแล้ว และจะส่งต่องานทุกอย่างให้เรียบร้อยที่สุดครับ' },
     ],
   },
+  ...WORK_MISSIONS_PART2,
+  ...WORK_MISSIONS_PART3,
 ];

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, FileText, Bot, CheckCircle2, XCircle } from 'lucide-react';
+import { logSingleMistake } from '../services/mistakeService';
 
 interface Question {
   id: string;
@@ -34,6 +35,24 @@ export default function InteractiveExamViewer({ exam, onBack, onAskAI }: Props) 
     
     setSelectedAnswers(prev => ({ ...prev, [questionId]: optionIndex }));
     setShowExplanation(prev => ({ ...prev, [questionId]: true }));
+
+    // Auto-capture wrong answer into Smart Mistake Notebook
+    const q = exam.questions.find((item) => item.id === questionId);
+    if (q && optionIndex !== q.answer) {
+      const isChineseExam =
+        /hsk|[\u4e00-\u9fff]/i.test(`${exam.type} ${exam.title} ${q.question}`);
+      logSingleMistake({
+        lang: isChineseExam ? 'CN' : 'EN',
+        source: 'exams',
+        sourceLabel: exam.title,
+        prompt: q.question,
+        options: q.options,
+        correctOptionIndex: q.answer,
+        userWrongAnswer: q.options[optionIndex] || String(optionIndex + 1),
+        correctAnswer: q.options[q.answer] || '',
+        explanationTh: q.explanation,
+      }).catch(() => {});
+    }
   };
 
   return (

@@ -9,7 +9,14 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { auth } from '../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { deductCredit, loadUserSubscription, getTotalCredits } from '../services/subscriptionService';
-import { getStoredByokKey, hasActiveByokKey, getByokCallRates } from '../services/byokService';
+import {
+  consumeByokFreeQuota,
+  getByokCallRates,
+  getByokQuotaStatus,
+  getStoredByokKey,
+  hasActiveByokKey,
+} from '../services/byokService';
+import { getFirebaseAuthHeaders, getFirebaseIdToken, openLoginModal } from '../services/authHeaders';
 import { isAdminEmail, isSuperAdminEmail } from '../types/subscription';
 import { emitAppLiveTranscript } from '../services/appSpeechBus';
 import {
@@ -18,6 +25,7 @@ import {
   RoleplayProgressRecord,
 } from '../services/userPersistence';
 import {
+  ALL_ROLEPLAY_MISSIONS,
   getNextMission,
   RoleplayCallConfig,
   RoleplayCorrectionStyle,
@@ -165,6 +173,8 @@ export default function VideoCallArea({
   const [isVidOn, setIsVidOn] = useState(false);
   const [showInsufficientModal, setShowInsufficientModal] = useState(false);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [callStatusMsg, setCallStatusMsg] = useState<string | null>(null);
   const [boardData, setBoardData] = useState<BoardData | null>(null);
 
   const [isCalling, setIsCalling] = useState(false);
@@ -252,11 +262,14 @@ export default function VideoCallArea({
     if (!isCalling) {
       setBoardData(null); 
       setIsLiveConnected(false);
+      setCallStatusMsg(null);
       lastHandledAskWordRef.current = null;
       setTranscripts([]);
       setIsCcEnabled(false);
     } else {
-      setIsLiveConnected(true);
+      setIsLiveConnected(false);
+      setCallError(null);
+      setCallStatusMsg('กำลังเชื่อมต่อสายกับ AI...');
       setIsCcEnabled(false);
     }
   }, [isCalling]);
@@ -424,10 +437,36 @@ export default function VideoCallArea({
   };
 
   const startCallWithCreditCheck = async (): Promise<boolean> => {
+    setCallError(null);
+    authRetryAttemptedRef.current = false;
+
+    // Unlock / pre-warm AudioContext synchronously inside the user's click gesture (critical for iOS Safari & Chrome autoplay policy)
+    try {
+      if (!outputAudioCtxRef.current || outputAudioCtxRef.current.state === 'closed') {
+        const outCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        outputAudioCtxRef.current = outCtx;
+        nextStartTimeRef.current = 0;
+        const gainNode = outCtx.createGain();
+        gainNode.gain.value = 0;
+        gainNode.connect(outCtx.destination);
+        const osc = outCtx.createOscillator();
+        osc.connect(gainNode);
+        osc.start();
+        silenceOscillatorRef.current = osc;
+      }
+      if (outputAudioCtxRef.current.state === 'suspended') {
+        outputAudioCtxRef.current.resume().catch(() => {});
+      }
+    } catch {}
+
+    const user = auth.currentUser;
+    if (!user) {
+      openLoginModal();
+      return false;
+    }
     const sub = await loadUserSubscription();
     const byokActive = hasActiveByokKey();
     const rates = getByokCallRates(sub.tier);
-    const user = auth.currentUser;
     const isSuperAdminUser = isSuperAdminEmail(user?.email);
     const isRegularAdminUser = isAdminEmail(user?.email) && !isSuperAdminUser;
 
@@ -529,21 +568,31 @@ export default function VideoCallArea({
       setIsReportLoading(true);
       setReportSavedToCloud(false);
 
+      const activeByokKey = getStoredByokKey();
+      const reportQuota = getByokQuotaStatus('roleplay_report');
+      const shouldUseByokReport = Boolean(activeByokKey && reportQuota.hasKey && reportQuota.canUseFree);
+      const isCreditPaidCall = !activeByokKey;
+
       (async () => {
         try {
           const resp = await fetch('/api/roleplay-report', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: await getFirebaseAuthHeaders(),
             body: JSON.stringify({
               mission,
               lang: roleplayLang,
               transcript: snapshotTranscript.map((t) => ({ role: t.role, text: t.text })),
               completedObjectives: snapshotObjectives,
               durationSeconds: snapshotDuration,
-              byokKey: getStoredByokKey() || undefined,
+              useByokQuota: shouldUseByokReport,
+              byokKey: shouldUseByokReport ? activeByokKey : undefined,
+              paidCallWithCredits: isCreditPaidCall,
             }),
           });
           const data: RoleplayReportData = await resp.json();
+          if (shouldUseByokReport && data?.usedAiAnalysis) {
+            consumeByokFreeQuota('roleplay_report').catch(() => {});
+          }
           setReportData(data);
 
           if (!mission.isCustom && data) {
@@ -805,6 +854,7 @@ export default function VideoCallArea({
   const interruptedTimeRef = useRef(0);
   const silenceOscillatorRef = useRef<OscillatorNode | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const authRetryAttemptedRef = useRef(false);
   const lastHandledAskWordRef = useRef<string | null>(null);
   const lastAudioSentAtRef = useRef(0);
   const lastFrameSentAtRef = useRef(0);
@@ -875,15 +925,29 @@ export default function VideoCallArea({
           ? (roleplayLang === 'CN' ? 'Chinese' : 'English')
           : (activeLang === 'CN' ? 'Chinese' : activeLang === 'TH' ? 'Thai' : 'English');
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const idToken = await getFirebaseIdToken(authRetryAttemptedRef.current);
+        if (!idToken) {
+          openLoginModal();
+          setIsCalling(false);
+          return;
+        }
         const params = new URLSearchParams({
           lang: langName,
           clientId: clientIdRef.current,
+          idToken,
         });
         if (auth.currentUser) {
           params.set('userId', auth.currentUser.uid);
         }
         const includeAskWord = !rpConfig && Boolean(askWord && lastHandledAskWordRef.current !== askWord);
-        if (includeAskWord && askWord) params.set('askWord', askWord);
+        let deferredAskWord: string | null = null;
+        if (includeAskWord && askWord) {
+          if (askWord.length <= 150) {
+            params.set('askWord', askWord);
+          } else {
+            deferredAskWord = askWord;
+          }
+        }
         if (!rpConfig && isSeriousMode) params.set('seriousMode', 'true');
         if (rpConfig) {
           params.set('roleplayMode', 'true');
@@ -898,35 +962,48 @@ export default function VideoCallArea({
 
         const socket = new WebSocket(`${protocol}://${window.location.host}/live?${params.toString()}`);
         wsRef.current = socket;
+        let receivedFatalError = false;
 
-        await new Promise<void>((resolve, reject) => {
-          socket.onopen = () => {
-            if (!sessionActive) return;
-            if (rpConfig) {
-              socket.send(
-                JSON.stringify({
-                  type: 'init_roleplay',
-                  mission: rpConfig.mission,
-                  assistMode: rpConfig.assistMode,
-                  correctionStyle: rpConfig.correctionStyle,
-                })
-              );
-            }
-            if (includeAskWord && askWord) lastHandledAskWordRef.current = askWord;
-            reconnectAttemptsRef.current = 0;
-            setIsLiveConnected(true);
-            setAvatarState('listening');
-            resolve();
-          };
-          socket.onerror = () => reject(new Error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ AI ได้'));
-        });
-
+        // Attach message & close listeners BEFORE waiting for open so early server errors are never missed
         socket.onmessage = (event) => {
+          if (!sessionActive) return;
           let message: any;
           try {
             message = JSON.parse(event.data);
           } catch (e) {
             console.error('Invalid AI message', e);
+            return;
+          }
+
+          if (message.type === 'ready') {
+            reconnectAttemptsRef.current = 0;
+            setIsLiveConnected(true);
+            setCallError(null);
+            setCallStatusMsg(null);
+            setAvatarState('listening');
+            if (deferredAskWord && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'ask_word', word: deferredAskWord }));
+              lastHandledAskWordRef.current = deferredAskWord;
+              deferredAskWord = null;
+            }
+            if (docExtractedTextRef.current && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'doc_context', text: docExtractedTextRef.current }));
+            }
+            if (lastDocImagePayloadRef.current && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({
+                type: 'doc_image',
+                image: lastDocImagePayloadRef.current.data,
+                mimeType: lastDocImagePayloadRef.current.mimeType
+              }));
+            }
+            return;
+          }
+
+          if (message.type === 'status' && message.message) {
+            setCallStatusMsg(String(message.message));
+            if (String(message.message).includes('สำเร็จ')) {
+              window.setTimeout(() => setCallStatusMsg(null), 3000);
+            }
             return;
           }
 
@@ -949,7 +1026,6 @@ export default function VideoCallArea({
             setTranscripts(prev => {
               const last = prev[prev.length - 1];
               if (last && last.role === message.role) {
-                // Append text to the same role's ongoing message
                 return [...prev.slice(0, -1), { ...last, text: last.text + " " + message.text }];
               }
               return [...prev, { id: Math.random().toString(), role: message.role, text: message.text }];
@@ -984,11 +1060,24 @@ export default function VideoCallArea({
             if (!isDocBoardOpenRef.current) setIsDocBoardOpen(true);
           } else if (message.type === 'error') {
             console.error('AI server error:', message.message);
-            if (String(message.message || '').toLowerCase().includes('reconnecting')) {
+            if (message.authRequired) {
+              if (!authRetryAttemptedRef.current && auth.currentUser) {
+                authRetryAttemptedRef.current = true;
+                setCallStatusMsg('กำลังรีเฟรชสิทธิ์เข้าสู่ระบบ...');
+                setReconnectTrigger(prev => prev + 1);
+                return;
+              }
+              receivedFatalError = true;
+              setCallError(message.message || 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนเริ่มคอลกับ AI');
+              setIsCalling(false);
+              openLoginModal();
+            } else if (String(message.message || '').toLowerCase().includes('reconnecting')) {
               setIsLiveConnected(false);
+              setCallStatusMsg('สาย AI หลุดชั่วคราว กำลังเชื่อมต่อใหม่...');
               setAvatarState('confused');
             } else {
-              alert(message.message || 'AI connection error');
+              receivedFatalError = true;
+              setCallError(message.message || 'ไม่สามารถเชื่อมต่อสาย AI ได้ กรุณาลองใหม่อีกครั้ง');
               setIsCalling(false);
             }
           }
@@ -1006,32 +1095,51 @@ export default function VideoCallArea({
         };
 
         socket.onclose = () => {
-          if (!sessionActive) return;
+          if (!sessionActive || receivedFatalError) return;
           setIsLiveConnected(false);
           setAvatarState('confused');
-          if (isCallingRef.current && reconnectAttemptsRef.current < 20) {
-            const delay = Math.min(1000 + reconnectAttemptsRef.current * 1000, 5000);
+          if (isCallingRef.current && reconnectAttemptsRef.current < 5) {
+            const delay = Math.min(1200 + reconnectAttemptsRef.current * 1200, 5000);
             reconnectAttemptsRef.current += 1;
+            setCallStatusMsg(`กำลังเชื่อมต่อสาย AI ใหม่... (ครั้งที่ ${reconnectAttemptsRef.current}/5)`);
             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
             reconnectTimeoutRef.current = setTimeout(() => {
               if (isCallingRef.current) setReconnectTrigger(prev => prev + 1);
             }, delay);
           } else if (isCallingRef.current) {
-            alert('AI connection stopped. Please end the call and start again.');
+            setCallError('การเชื่อมต่อสาย AI ถูกตัด กรุณากดเริ่มสนทนาใหม่อีกครั้งครับ');
             setIsCalling(false);
           }
         };
 
-        if (docExtractedTextRef.current && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'doc_context', text: docExtractedTextRef.current }));
-        }
-        if (lastDocImagePayloadRef.current && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({
-            type: 'doc_image',
-            image: lastDocImagePayloadRef.current.data,
-            mimeType: lastDocImagePayloadRef.current.mimeType
-          }));
-        }
+        await new Promise<void>((resolve, reject) => {
+          const openTimeout = window.setTimeout(() => {
+            reject(new Error('หมดเวลาเชื่อมต่อกับเซิร์ฟเวอร์ AI กรุณาลองใหม่อีกครั้ง'));
+          }, 15000);
+          socket.onopen = () => {
+            window.clearTimeout(openTimeout);
+            if (!sessionActive) return resolve();
+            if (rpConfig) {
+              socket.send(
+                JSON.stringify({
+                  type: 'init_roleplay',
+                  mission: rpConfig.mission,
+                  assistMode: rpConfig.assistMode,
+                  correctionStyle: rpConfig.correctionStyle,
+                })
+              );
+            }
+            if (includeAskWord && askWord && !deferredAskWord) {
+              lastHandledAskWordRef.current = askWord;
+            }
+            resolve();
+          };
+          socket.onerror = () => {
+            window.clearTimeout(openTimeout);
+            reject(new Error('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ AI ได้ กรุณาลองใหม่อีกครั้ง'));
+          };
+        });
+
         // ------------------
         // Setup Media 
         // ------------------
@@ -1043,12 +1151,17 @@ export default function VideoCallArea({
           });
         } catch (err) {
           try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode } } });
+            stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
           } catch (err2) {
             try {
-              stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+              stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode } } });
             } catch (err3) {}
           }
+        }
+
+        if (!sessionActive) {
+          if (stream) stream.getTracks().forEach(t => t.stop());
+          return;
         }
 
         currentStream = stream;
@@ -1059,7 +1172,7 @@ export default function VideoCallArea({
           setStream(currentStream);
         }
 
-        if (!outputAudioCtxRef.current) {
+        if (!outputAudioCtxRef.current || outputAudioCtxRef.current.state === 'closed') {
             const outCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             outputAudioCtxRef.current = outCtx;
             nextStartTimeRef.current = 0;
@@ -1071,11 +1184,20 @@ export default function VideoCallArea({
             osc.start();
             silenceOscillatorRef.current = osc;
         }
+        if (outputAudioCtxRef.current.state === 'suspended') {
+          outputAudioCtxRef.current.resume().catch(() => {});
+        }
 
         const hasAudioTrack = currentStream ? currentStream.getAudioTracks().length > 0 : false;
+        if (!hasAudioTrack) {
+          setCallStatusMsg('ไม่พบไมโครโฟนหรือยังไม่ได้อนุญาตสิทธิ์ไมค์ (AI จะยังพูดได้แต่จะไม่ได้ยินเสียงคุณ)');
+        }
         
         if (hasAudioTrack && sessionActive) {
           const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => {});
+          }
           inputAudioCtxRef.current = audioCtx;
           const source = audioCtx.createMediaStreamSource(currentStream!);
           sourceRef.current = source;
@@ -1171,7 +1293,7 @@ export default function VideoCallArea({
 
       } catch (e: any) {
          console.error("Gemini init error", e);
-         alert("Gemini Connection Error: " + (e?.message || JSON.stringify(e)));
+         setCallError(e?.message || "ไม่สามารถเชื่อมต่อสาย AI ได้ กรุณาลองใหม่อีกครั้ง");
          setIsCalling(false);
       }
     }
@@ -1437,7 +1559,7 @@ export default function VideoCallArea({
               }`}
             >
               <Compass className="w-4 h-4" />
-              <span>ภารกิจจำลองสถานการณ์ (100 ด่าน)</span>
+              <span>ภารกิจจำลองสถานการณ์ ({ALL_ROLEPLAY_MISSIONS.length} ด่าน)</span>
             </button>
           </div>
         </div>
@@ -1451,7 +1573,13 @@ export default function VideoCallArea({
             progressMap={roleplayProgressMap}
             isLoadingProgress={isLoadingRoleplayProgress}
             onSelectMission={(mission) => setBriefingMission(mission)}
-            onOpenCustomMission={() => setShowCustomMissionModal(true)}
+            onOpenCustomMission={() => {
+              if (!auth.currentUser) {
+                openLoginModal();
+                return;
+              }
+              setShowCustomMissionModal(true);
+            }}
           />
         </div>
       ) : (
@@ -1615,6 +1743,38 @@ export default function VideoCallArea({
             </div>
           </div>
         </div>
+
+        {/* ── Call Error / Connection Status Banner ── */}
+        {callError && (
+          <div className="shrink-0 flex items-start justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium shadow-xs">
+            <div className="flex-1 leading-relaxed">
+              <span>{callError}</span>
+              {(callError.includes('BYOK') || callError.includes('API Key')) && (
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-byok-modal'))}
+                  className="ml-2 underline font-bold text-rose-900 hover:text-rose-700 cursor-pointer"
+                >
+                  ตั้งค่า BYOK
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCallError(null)}
+              className="shrink-0 p-1 rounded-lg hover:bg-rose-100 text-rose-500 cursor-pointer"
+              aria-label="ปิดข้อความแจ้งเตือน"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        {!callError && callStatusMsg && isCalling && (
+          <div className="shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-semibold">
+            <Loader2 size={14} className="animate-spin shrink-0 text-indigo-600" />
+            <span>{callStatusMsg}</span>
+          </div>
+        )}
 
         {/* ── Call Controls — Elegant Premium ── */}
         <div

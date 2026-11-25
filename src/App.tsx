@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Book, BookOpen, Video, Pencil, Layers, FileSignature, UserCircle, Sparkles, Clock, Phone, Library, MessageSquare, Download, Gamepad2, Bot, LogOut, ZoomIn, ZoomOut, Timer, Shield, Calendar, Captions, Smartphone, Music } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Book, BookOpen, BookMarked, Video, Pencil, Layers, FileSignature, UserCircle, Sparkles, Clock, Phone, Library, MessageSquare, Download, Gamepad2, Bot, LogOut, ZoomIn, ZoomOut, Timer, Shield, Calendar, Captions, Smartphone, Music, Newspaper, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LoginArea, { UserProfile } from './components/LoginArea';
 import LessonsArea from './components/LessonsArea';
@@ -9,6 +9,8 @@ import FlashcardsArea from './components/FlashcardsArea';
 import ExamsArea from './components/ExamsArea';
 import MockTestsTabArea from './components/MockTestsTabArea';
 import KaraokeArea from './components/karaoke/KaraokeArea';
+import ReadingArea from './components/reading/ReadingArea';
+import StudyHubArea from './components/wordbook/StudyHubArea';
 import ContactArea from './components/ContactArea';
 import AdminDashboardArea from './components/AdminDashboardArea';
 import VocabArea from './components/VocabArea';
@@ -21,7 +23,12 @@ import { initAuth, logout, listenToUserSession } from './firebase';
 import SubscriptionModal from './components/SubscriptionModal';
 import ByokModal from './components/ByokModal';
 import { loadUserSubscription, getTotalCredits, syncAdminSubscriptions } from './services/subscriptionService';
-import { hasActiveByokKey, syncByokKeyWithFirestore } from './services/byokService';
+import {
+  clearLocalByokSession,
+  hasActiveByokKey,
+  syncByokDailyUsageWithFirestore,
+  syncByokKeyWithFirestore,
+} from './services/byokService';
 import { UserSubscriptionState, TIER_CONFIGS, isAdminEmail, isSuperAdminEmail } from './types/subscription';
 import { Crown, Zap, Lock, Key } from 'lucide-react';
 import { playThaiTTS } from './utils/audio';
@@ -33,6 +40,21 @@ import { UpdatePrompt } from './components/UpdatePrompt';
 import PromoStudioRecorder from './components/recorder/PromoStudioRecorder';
 import MobileCameraOverlay from './components/recorder/MobileCameraOverlay';
 import StandaloneSubtitleModal from './components/recorder/StandaloneSubtitleModal';
+import {
+  getDueWordCount,
+  normalizeWordbookLang,
+  resetWordbookMemoryCache,
+  syncWordbookWithFirestore,
+} from './services/wordbookService';
+import {
+  resetMistakeMemoryCache,
+  syncMistakesWithFirestore,
+} from './services/mistakeService';
+import {
+  resetReadingMemoryCache,
+  syncCustomArticlesWithFirestore,
+  syncReadingProgressWithFirestore,
+} from './services/readingService';
 
 const NAV_ITEMS = [
   { id: 'call',       icon: Video,          label: 'วิดีโอคอล'    },
@@ -45,6 +67,8 @@ const NAV_ITEMS = [
   { id: 'exams',      icon: Layers,         label: 'ข้อสอบ'       },
   { id: 'mocktests',  icon: Clock,          label: 'จำลองสอบ'     },
   { id: 'karaoke',    icon: Music,          label: 'คาราโอเกะ'    },
+  { id: 'reading',    icon: Newspaper,      label: 'อ่านเรื่องสั้น' },
+  { id: 'study_hub',  icon: BookMarked,     label: 'สมุดเรียน'    },
   { id: 'contact',    icon: Phone,          label: 'ติดต่อ'     },
 ];
 
@@ -93,6 +117,57 @@ export default function App() {
   const [mobileCamOpenTrigger, setMobileCamOpenTrigger] = useState(0);
   const [isMobileCamActive, setIsMobileCamActive] = useState(false);
   const [showStandaloneSubtitles, setShowStandaloneSubtitles] = useState(false);
+  const navScrollRef = useRef<HTMLDivElement | null>(null);
+  const [navCanScrollLeft, setNavCanScrollLeft] = useState(false);
+  const [navCanScrollRight, setNavCanScrollRight] = useState(false);
+
+  const updateNavScrollState = useCallback(() => {
+    const el = navScrollRef.current;
+    if (!el) return;
+    setNavCanScrollLeft(el.scrollLeft > 4);
+    setNavCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(updateNavScrollState);
+    window.addEventListener('resize', updateNavScrollState);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', updateNavScrollState);
+    };
+  }, [updateNavScrollState, currentUser?.email]);
+
+  useEffect(() => {
+    const el = navScrollRef.current;
+    if (!el) return;
+    const activeBtn = el.querySelector<HTMLElement>(`[data-nav-id="${activeTab}"]`);
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+    const timer = window.setTimeout(updateNavScrollState, 250);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, updateNavScrollState]);
+
+  const scrollNavBy = (delta: number) => {
+    navScrollRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
+  const [dueWordbookCount, setDueWordbookCount] = useState<number>(() =>
+    getDueWordCount(normalizeWordbookLang('EN'))
+  );
+
+  useEffect(() => {
+    const updateDueCount = () => {
+      setDueWordbookCount(getDueWordCount(normalizeWordbookLang(activeLang)));
+    };
+    updateDueCount();
+    window.addEventListener('wordbook_updated', updateDueCount);
+    const interval = setInterval(updateDueCount, 60000);
+    return () => {
+      window.removeEventListener('wordbook_updated', updateDueCount);
+      clearInterval(interval);
+    };
+  }, [activeLang, currentUser?.uid]);
 
   useEffect(() => {
     document.documentElement.style.fontSize = `${uiScale * 16}px`;
@@ -156,7 +231,17 @@ export default function App() {
           photoURL: user.photoURL,
           isSubscribed: false,
         });
-        syncByokKeyWithFirestore(user.uid);
+        syncByokKeyWithFirestore(user.uid).then(() => {
+          setHasByok(hasActiveByokKey());
+        });
+        syncByokDailyUsageWithFirestore().catch(() => {});
+        resetWordbookMemoryCache();
+        resetMistakeMemoryCache();
+        resetReadingMemoryCache();
+        syncWordbookWithFirestore(true).catch((e) => console.warn('Sync wordbook:', e));
+        syncMistakesWithFirestore(true).catch((e) => console.warn('Sync mistakes:', e));
+        syncReadingProgressWithFirestore(true).catch((e) => console.warn('Sync reading:', e));
+        syncCustomArticlesWithFirestore(true).catch((e) => console.warn('Sync custom reading:', e));
         if (isAdminEmail(user.email)) {
           syncAdminSubscriptions().catch((e) => console.warn('Sync admin subscriptions:', e));
         }
@@ -178,6 +263,11 @@ export default function App() {
           return;
         }
         setCurrentUser(null);
+        clearLocalByokSession();
+        setHasByok(false);
+        resetWordbookMemoryCache();
+        resetMistakeMemoryCache();
+        resetReadingMemoryCache();
         if (sessionUnsubscribe) {
           sessionUnsubscribe();
           sessionUnsubscribe = undefined;
@@ -402,22 +492,22 @@ export default function App() {
             id="btn-byok-settings"
             onClick={() => setShowByokModal(true)}
             className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-all hover:scale-105 ${
-              hasByok
+              currentUser && hasByok
                 ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border border-emerald-400/40'
                 : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300'
             }`}
-            title="ตั้งค่า Gemini API Key ส่วนตัว (BYOK) เพื่อคอลกับ AI ฟรีไม่อั้นทุกแพ็กเกจ"
+            title="ตั้งค่า Gemini API Key ส่วนตัว (BYOK) — ต้องเข้าสู่ระบบด้วย Google ก่อนใช้งาน"
           >
-            <Key size={14} className={hasByok ? "text-emerald-200" : "text-indigo-600"} />
+            <Key size={14} className={currentUser && hasByok ? "text-emerald-200" : "text-indigo-600"} />
             <div className="flex flex-col items-start text-left">
               <span className="hidden sm:inline">
-                {hasByok ? 'BYOK: โทรฟรีไม่อั้น' : 'ใส่ API Key (โทรฟรีไม่อั้น)'}
+                {currentUser && hasByok ? 'BYOK: โทรฟรีไม่อั้น' : 'ใส่ API Key (โทรฟรีไม่อั้น)'}
               </span>
               <span className="sm:hidden">
-                {hasByok ? 'BYOK' : 'API Key'}
+                {currentUser && hasByok ? 'BYOK' : 'API Key'}
               </span>
             </div>
-            {hasByok && (
+            {currentUser && hasByok && (
               <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
             )}
           </button>
@@ -552,6 +642,8 @@ export default function App() {
               </div>
               <button
                 onClick={async () => {
+                  clearLocalByokSession();
+                  setHasByok(false);
                   await logout();
                   setCurrentUser(null);
                 }}
@@ -652,6 +744,16 @@ export default function App() {
                 <KaraokeArea activeLang={activeLang} />
               </motion.div>
             )}
+            {activeTab === 'reading' && (
+              <motion.div key={`reading_${currentUser?.uid || 'guest'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
+                <ReadingArea activeLang={activeLang} onAskAI={handleAskAI} />
+              </motion.div>
+            )}
+            {activeTab === 'study_hub' && (
+              <motion.div key={`study_hub_${currentUser?.uid || 'guest'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
+                <StudyHubArea activeLang={activeLang} userName={currentUser?.name} onNavigateTab={setActiveTab} onAskAI={handleAskAI} />
+              </motion.div>
+            )}
             {activeTab === 'contact' && (
               <motion.div key="contact" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }} className="h-full">
                 <ContactArea />
@@ -684,44 +786,88 @@ export default function App() {
 
       {/* ── BOTTOM NAV ── */}
       <nav
-        className="relative z-10 fixed bottom-0 w-full md:static md:w-auto shrink-0 flex overflow-x-auto no-scrollbar glass"
+        className="fixed bottom-0 left-0 right-0 z-30 md:static md:w-full shrink-0 flex items-center glass"
         style={{
           height: 68,
           borderTop: '1px solid rgba(124,58,237,0.12)',
           borderRadius: 0,
         }}
       >
-        <div className="flex items-center justify-start sm:justify-center w-max min-w-full px-4 gap-2 sm:gap-4 md:gap-8">
-          {[
-            ...NAV_ITEMS,
-            ...(isAdminEmail(currentUser?.email) ? [{ id: 'admin', icon: Shield, label: 'หลังบ้าน' }] : [])
-          ].map(({ id, icon: Icon, label }) => {
-            const active = activeTab === id;
-            return (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id)}
-                className={`flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl min-w-[60px] transition-all duration-200 relative ${active ? 'nav-tab-active' : ''}`}
-                style={active
-                  ? { color: 'var(--c-indigo-mid)' }
-                  : { color: 'var(--c-text-subtle)' }
-                }
-              >
-                {active && (
-                  <motion.div
-                    layoutId="nav-pill"
-                    className="absolute inset-0 rounded-xl"
-                    style={{ background: 'var(--c-indigo-pale)' }}
-                    transition={{ type: 'spring', bounce: 0.25, duration: 0.4 }}
-                  />
-                )}
-                <Icon size={21} strokeWidth={active ? 2.5 : 1.8} className="relative z-10" />
-                <span className="text-[10px] font-bold tracking-wide relative z-10">{label}</span>
-              </button>
-            );
-          })}
+        {navCanScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollNavBy(-220)}
+            aria-label="เลื่อนเมนูไปทางซ้าย"
+            className="shrink-0 h-full px-1.5 flex items-center justify-center text-indigo-600 hover:bg-indigo-50/80 transition-colors border-r border-indigo-100/70 bg-white/80 cursor-pointer"
+          >
+            <ChevronLeft size={18} />
+          </button>
+        )}
+        <div
+          ref={navScrollRef}
+          onScroll={updateNavScrollState}
+          onWheel={(e) => {
+            const el = navScrollRef.current;
+            if (!el || el.scrollWidth <= el.clientWidth) return;
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+              el.scrollLeft += e.deltaY;
+            }
+          }}
+          className="flex-1 h-full overflow-x-auto no-scrollbar flex items-center"
+        >
+          <div className="flex items-center w-max mx-auto px-2 sm:px-3 gap-0.5 sm:gap-1 lg:gap-1.5">
+            {[
+              ...NAV_ITEMS,
+              ...(isAdminEmail(currentUser?.email) ? [{ id: 'admin', icon: Shield, label: 'หลังบ้าน' }] : [])
+            ].map(({ id, icon: Icon, label }) => {
+              const active = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  data-nav-id={id}
+                  onClick={() => setActiveTab(id)}
+                  className={`flex flex-col items-center justify-center gap-1 px-1.5 sm:px-2 py-1.5 rounded-xl min-w-[54px] sm:min-w-[58px] lg:min-w-[62px] shrink-0 whitespace-nowrap transition-all duration-200 relative cursor-pointer ${active ? 'nav-tab-active' : ''}`}
+                  style={active
+                    ? { color: 'var(--c-indigo-mid)' }
+                    : { color: 'var(--c-text-subtle)' }
+                  }
+                >
+                  {active && (
+                    <motion.div
+                      layoutId="nav-pill"
+                      className="absolute inset-0 rounded-xl"
+                      style={{ background: 'var(--c-indigo-pale)' }}
+                      transition={{ type: 'spring', bounce: 0.25, duration: 0.4 }}
+                    />
+                  )}
+                  <div className="relative z-10">
+                    <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
+                    {id === 'study_hub' && dueWordbookCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-extrabold flex items-center justify-center tabular-nums shadow-xs"
+                        title={`มีคำศัพท์ถึงกำหนดทบทวนวันนี้ ${dueWordbookCount} คำ`}
+                      >
+                        {dueWordbookCount > 99 ? '99+' : dueWordbookCount}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-bold tracking-tight relative z-10 leading-none">{label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        
+        {navCanScrollRight && (
+          <button
+            type="button"
+            onClick={() => scrollNavBy(220)}
+            aria-label="เลื่อนเมนูไปทางขวา"
+            className="shrink-0 h-full px-1.5 flex items-center justify-center text-indigo-600 hover:bg-indigo-50/80 transition-colors border-l border-indigo-100/70 bg-white/80 cursor-pointer"
+          >
+            <ChevronRight size={18} />
+          </button>
+        )}
       </nav>
 
       {/* Login Modal */}

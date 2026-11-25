@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { getFirebaseStorageUrl } from '../utils/firebaseStorage';
 import { 
-  ChevronLeft, BookOpen, GraduationCap, ArrowRight, Volume2, Bot, CheckCircle2, XCircle, Bookmark, BookmarkCheck, Play
+  ChevronLeft, BookOpen, GraduationCap, ArrowRight, Volume2, Bot, CheckCircle2, XCircle, Bookmark, BookmarkCheck, Play, Mic
 } from 'lucide-react';
 import { getVocabData } from '../data/mockContent';
 import voaLessons from '../data/voa_lessons.json';
@@ -10,6 +10,13 @@ import AnnotationToolbar, { AnnotationState } from './AnnotationToolbar';
 import FirebaseMaterialsViewer from './FirebaseMaterialsViewer';
 import DocumentGallery from './DocumentGallery';
 import { saveModuleBookmark, loadModuleBookmark, ModuleBookmark } from '../services/userPersistence';
+import SaveToWordbookButton from './wordbook/SaveToWordbookButton';
+import SentenceShadowingPanel from './lessons/SentenceShadowingPanel';
+import {
+  getAllLocalSentenceRecords,
+  ShadowingSentenceRecord,
+} from '../services/shadowingService';
+import { normalizeShadowingKey } from '../utils/shadowingMatcher';
 
 interface NavNode {
   id: string;
@@ -27,11 +34,26 @@ export default function LessonsArea({ activeLang, onAskAI }: { activeLang: 'EN' 
   const [stack, setStack] = useState<NavNode[]>(getInitialStack(activeLang));
   const current = stack[stack.length - 1];
   const [bookmark, setBookmark] = useState<ModuleBookmark | null>(null);
+  const [openShadowingKey, setOpenShadowingKey] = useState<string | null>(null);
+  const [shadowingRecords, setShadowingRecords] = useState<Record<string, ShadowingSentenceRecord>>(
+    () => getAllLocalSentenceRecords()
+  );
 
   React.useEffect(() => {
     setStack(getInitialStack(activeLang));
+    setOpenShadowingKey(null);
     loadModuleBookmark('vocab', activeLang).then(b => setBookmark(b));
   }, [activeLang]);
+
+  React.useEffect(() => {
+    setOpenShadowingKey(null);
+  }, [current?.id, current?.title]);
+
+  React.useEffect(() => {
+    const syncShadowing = () => setShadowingRecords(getAllLocalSentenceRecords());
+    window.addEventListener('shadowing_updated', syncShadowing);
+    return () => window.removeEventListener('shadowing_updated', syncShadowing);
+  }, []);
 
   const push = (node: NavNode) => setStack((prev) => [...prev, node]);
   const pop = () => setStack((prev) => prev.length > 1 ? prev.slice(0, -1) : prev);
@@ -343,58 +365,119 @@ export default function LessonsArea({ activeLang, onAskAI }: { activeLang: 'EN' 
                                       {isCn && item.pinyin && <span className="text-gray-400 font-mono text-sm">{item.pinyin}</span>}
                                   </div>
 
-                                  <button
-                                    onClick={() => {
-                                      const bookmarkData = { stack, wordIndex: idx, wordText: item.word };
-                                      const bTitle = `${listCategory} (${listTitle}) - คำว่า "${item.word}"`;
-                                      saveModuleBookmark('vocab', activeLang, bTitle, bookmarkData);
-                                      setBookmark({
-                                        module: 'vocab',
-                                        lang: activeLang,
-                                        title: bTitle,
-                                        data: bookmarkData,
-                                        updatedAt: Date.now()
-                                      });
-                                    }}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
-                                      isPinned 
-                                        ? 'bg-amber-400 text-amber-950 shadow-sm' 
-                                        : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-                                    }`}
-                                    title="ปักหมุดคำนี้ไว้เป็นจุดเรียนล่าสุดของวันนี้"
-                                  >
-                                    <Bookmark size={14} className={isPinned ? 'fill-amber-950' : ''} />
-                                    <span>{isPinned ? 'ปักหมุดแล้ว 📌' : 'ปักหมุดคำนี้ 📌'}</span>
-                                  </button>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <SaveToWordbookButton
+                                      word={item.word}
+                                      lang={isCn ? 'CN' : 'EN'}
+                                      meaningTh={item.th || ''}
+                                      reading={isCn ? item.pinyin : item.phonetic}
+                                      partOfSpeech={isEn ? item.type : undefined}
+                                      example={item.example}
+                                      exampleTh={item.exampleTh || item.example_th}
+                                      source="lessons"
+                                      sourceLabel={listCategory === listTitle ? listCategory : `${listCategory} - ${listTitle}`}
+                                      size="sm"
+                                      compactLabel
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const bookmarkData = { stack, wordIndex: idx, wordText: item.word };
+                                        const bTitle = `${listCategory} (${listTitle}) - คำว่า "${item.word}"`;
+                                        saveModuleBookmark('vocab', activeLang, bTitle, bookmarkData);
+                                        setBookmark({
+                                          module: 'vocab',
+                                          lang: activeLang,
+                                          title: bTitle,
+                                          data: bookmarkData,
+                                          updatedAt: Date.now()
+                                        });
+                                      }}
+                                      className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
+                                        isPinned 
+                                          ? 'bg-amber-400 text-amber-950 shadow-sm' 
+                                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                                      }`}
+                                      title="ปักหมุดคำนี้ไว้เป็นจุดเรียนล่าสุดของวันนี้"
+                                    >
+                                      <Bookmark size={14} className={isPinned ? 'fill-amber-950' : ''} />
+                                      <span>{isPinned ? 'ปักหมุดแล้ว 📌' : 'ปักหมุดคำนี้ 📌'}</span>
+                                    </button>
+                                  </div>
                               </div>
                               <div className="flex flex-wrap gap-2 mb-3">
                                   <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-sm font-bold">🇹🇭 {item.th}</span>
                                   {isEn && item.cn && <span className="bg-orange-50 text-orange-700 px-3 py-1 rounded-lg text-sm font-medium">🇨🇳 {item.cn}</span>}
                               </div>
-                              {item.example && (
-                                  <div className="mt-4 pt-4 border-t border-gray-100">
-                                      <div className="flex gap-4 items-start justify-between">
-                                          <div className="flex-1">
-                                              <div className="text-gray-800 text-lg mb-1 leading-relaxed">
-                                                  {item.example}
-                                              </div>
-                                              {(item.exampleTh || item.example_th) && (
-                                                  <div className="text-gray-500 text-sm">
-                                                      แปล: {item.exampleTh || item.example_th}
-                                                  </div>
-                                              )}
+                              {item.example && (() => {
+                                  const shadowLang: 'EN' | 'CN' = isCn ? 'CN' : 'EN';
+                                  const cardKey = `${idx}_${item.word}`;
+                                  const isShadowOpen = openShadowingKey === cardKey;
+                                  const shadowRec =
+                                    shadowingRecords[normalizeShadowingKey(shadowLang, item.example)];
+                                  return (
+                                    <div className="mt-4 pt-4 border-t border-gray-100">
+                                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start justify-between">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-gray-800 text-lg mb-1 leading-relaxed">
+                                            {item.example}
                                           </div>
-                                          <button 
+                                          {(item.exampleTh || item.example_th) && (
+                                            <div className="text-gray-500 text-sm">
+                                              แปล: {item.exampleTh || item.example_th}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                                          <button
                                             id={idx === 0 ? 'tutorial-example-audio-1' : undefined}
                                             onClick={() => playAudio(item.example)}
-                                            className="shrink-0 inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-600 hover:text-white transition-colors"
+                                            className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-600 hover:text-white transition-colors"
                                             title="ฟังเสียงประโยค"
                                           >
-                                              <Volume2 size={16} />
+                                            <Volume2 size={16} />
                                           </button>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setOpenShadowingKey(isShadowOpen ? null : cardKey)
+                                            }
+                                            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                                              isShadowOpen
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                                : shadowRec
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                                            }`}
+                                            title="ฝึกพูดตามประโยคนี้ (Shadowing Coach)"
+                                          >
+                                            <Mic size={14} />
+                                            <span>
+                                              {isShadowOpen
+                                                ? 'ปิดฝึกพูด'
+                                                : shadowRec && shadowRec.bestAccuracyPct > 0
+                                                ? `ฝึกพูดตาม · ${shadowRec.bestAccuracyPct}%`
+                                                : shadowRec
+                                                ? 'ฝึกพูดแล้ว'
+                                                : 'ฝึกพูดตาม'}
+                                            </span>
+                                          </button>
+                                        </div>
                                       </div>
-                                  </div>
-                              )}
+
+                                      {isShadowOpen && (
+                                        <SentenceShadowingPanel
+                                          sentence={item.example}
+                                          translationTh={item.exampleTh || item.example_th}
+                                          lang={shadowLang}
+                                          onClose={() => setOpenShadowingKey(null)}
+                                          onPracticeSaved={() =>
+                                            setShadowingRecords(getAllLocalSentenceRecords())
+                                          }
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                              })()}
                           </div>
                         </div>
                       );

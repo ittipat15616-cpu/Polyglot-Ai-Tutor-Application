@@ -25,7 +25,10 @@ import {
   FileSignature,
   Clock,
   Music,
-  Captions
+  Captions,
+  Lock,
+  LogIn,
+  BookOpen
 } from 'lucide-react';
 import { 
   getStoredByokKey, 
@@ -40,6 +43,7 @@ import {
   ByokDailyUsage,
   getResetTimeLabelThai
 } from '../services/byokService';
+import { openLoginModal } from '../services/authHeaders';
 import { UserSubscriptionState } from '../types/subscription';
 import { auth } from '../firebase';
 
@@ -67,20 +71,49 @@ export const ByokModal: React.FC<ByokModalProps> = ({
   }>({ status: 'idle', message: '' });
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [dailyUsage, setDailyUsage] = useState<ByokDailyUsage>(() => getByokDailyUsage());
+  const [isSignedIn, setIsSignedIn] = useState<boolean>(() => Boolean(auth.currentUser));
 
   useEffect(() => {
-    if (isOpen) {
-      // Sync latest key & daily usage from Firestore if logged in
-      syncByokKeyWithFirestore().then((cloudKey) => {
-        const stored = cloudKey || getStoredByokKey();
-        setActiveKey(stored);
-        setApiKeyInput(stored || '');
-        setValidationResult({ status: 'idle', message: '' });
-      });
-      syncByokDailyUsageWithFirestore().then((usage) => {
-        setDailyUsage(usage);
-      });
+    if (!isOpen) return;
+    const signedInNow = Boolean(auth.currentUser);
+    setIsSignedIn(signedInNow);
+
+    if (!signedInNow) {
+      setActiveKey(null);
+      setApiKeyInput('');
+      setValidationResult({ status: 'idle', message: '' });
+      setDailyUsage(getByokDailyUsage());
+      return;
     }
+
+    // Sync latest key & daily usage from Firestore when logged in
+    syncByokKeyWithFirestore().then((cloudKey) => {
+      const stored = cloudKey || getStoredByokKey();
+      setActiveKey(stored);
+      setApiKeyInput(stored || '');
+      setValidationResult({ status: 'idle', message: '' });
+    });
+    syncByokDailyUsageWithFirestore().then((usage) => {
+      setDailyUsage(usage);
+    });
+
+    const handleQuotaUpdated = () => {
+      setDailyUsage(getByokDailyUsage());
+    };
+    const handleKeyUpdated = () => {
+      const signed = Boolean(auth.currentUser);
+      setIsSignedIn(signed);
+      const stored = signed ? getStoredByokKey() : null;
+      setActiveKey(stored);
+      if (!signed) setApiKeyInput('');
+    };
+
+    window.addEventListener('byok_quota_updated', handleQuotaUpdated);
+    window.addEventListener('byok_key_updated', handleKeyUpdated);
+    return () => {
+      window.removeEventListener('byok_quota_updated', handleQuotaUpdated);
+      window.removeEventListener('byok_key_updated', handleKeyUpdated);
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -89,6 +122,13 @@ export const ByokModal: React.FC<ByokModalProps> = ({
   const currentRates = getByokCallRates(currentTier);
 
   const handlePasteFromClipboard = async () => {
+    if (!auth.currentUser) {
+      setValidationResult({
+        status: 'error',
+        message: 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนตั้งค่าและใช้งาน BYOK ครับ'
+      });
+      return;
+    }
     setIsPasting(true);
     try {
       let pastedText = '';
@@ -129,6 +169,13 @@ export const ByokModal: React.FC<ByokModalProps> = ({
   };
 
   const handleValidateAndSave = async () => {
+    if (!auth.currentUser) {
+      setValidationResult({
+        status: 'error',
+        message: 'กรุณาเข้าสู่ระบบด้วยบัญชี Google ก่อนตั้งค่าและใช้งาน BYOK ครับ'
+      });
+      return;
+    }
     if (!apiKeyInput || apiKeyInput.trim().length < 15) {
       setValidationResult({
         status: 'error',
@@ -144,14 +191,21 @@ export const ByokModal: React.FC<ByokModalProps> = ({
     setIsValidating(false);
 
     if (result.valid) {
-      await setStoredByokKey(apiKeyInput.trim());
-      setActiveKey(apiKeyInput.trim());
-      const emailText = auth.currentUser?.email ? ` และบันทึกผูกกับบัญชี Google (${auth.currentUser.email}) ให้เรียบร้อยแล้ว เข้าสู่ระบบบนอุปกรณ์อื่นก็ใช้งานได้ทันที` : '';
-      setValidationResult({
-        status: 'success',
-        message: `🎉 ยืนยันสำเร็จ! Gemini API Key ใช้งานได้สมบูรณ์ ระบบเปิดโหมด BYOK${emailText}`
-      });
-      if (onKeyUpdated) onKeyUpdated();
+      try {
+        await setStoredByokKey(apiKeyInput.trim());
+        setActiveKey(apiKeyInput.trim());
+        const emailText = auth.currentUser?.email ? ` และบันทึกผูกกับบัญชี Google (${auth.currentUser.email}) ให้เรียบร้อยแล้ว เข้าสู่ระบบบนอุปกรณ์อื่นก็ใช้งานได้ทันที` : '';
+        setValidationResult({
+          status: 'success',
+          message: `🎉 ยืนยันสำเร็จ! Gemini API Key ใช้งานได้สมบูรณ์ ระบบเปิดโหมด BYOK${emailText}`
+        });
+        if (onKeyUpdated) onKeyUpdated();
+      } catch (e: any) {
+        setValidationResult({
+          status: 'error',
+          message: e?.message || 'ไม่สามารถบันทึกคีย์ได้ กรุณาเข้าสู่ระบบแล้วลองใหม่'
+        });
+      }
     } else {
       setValidationResult({
         status: 'error',
@@ -199,7 +253,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-indigo-200/80 mt-0.5">
-                  คอล AI ไม่อั้น + สอบศัพท์ 7 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 3 • ใส่ซับ AI 1 คลิป/วัน (≤5 นาที)
+                  คอล AI ไม่อั้น + สอบศัพท์ 10 • ตรวจข้อสอบ 3 • แปลเพลงใหม่ 10 • อธิบายคำเพลง 100 • Roleplay สร้างด่าน 30 / สรุปคะแนน 100 • ใส่ซับ AI 1 คลิป/วัน
                 </p>
               </div>
             </div>
@@ -216,21 +270,29 @@ export const ByokModal: React.FC<ByokModalProps> = ({
           <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-700 text-sm">
             {/* Current Status Box */}
             <div className={`p-4 rounded-2xl border transition-all ${
-              activeKey 
+              !isSignedIn
+                ? 'bg-rose-50/80 border-rose-200'
+                : activeKey 
                 ? 'bg-emerald-50/80 border-emerald-200' 
                 : 'bg-amber-50/70 border-amber-200'
             }`}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2.5">
-                  {activeKey ? (
+                  {!isSignedIn ? (
+                    <Lock className="text-rose-600 shrink-0" size={20} />
+                  ) : activeKey ? (
                     <ShieldCheck className="text-emerald-600 shrink-0" size={20} />
                   ) : (
                     <Info className="text-amber-600 shrink-0" size={20} />
                   )}
                   <div>
-                    <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <div className="font-bold text-slate-800 text-sm flex items-center gap-2 flex-wrap">
                       สถานะโหมด BYOK: 
-                      {activeKey ? (
+                      {!isSignedIn ? (
+                        <span className="text-rose-700 bg-rose-100/90 px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                          ล็อกไว้ — ต้องเข้าสู่ระบบด้วย Google ก่อน
+                        </span>
+                      ) : activeKey ? (
                         <span className="text-emerald-700 bg-emerald-100/90 px-2.5 py-0.5 rounded-full text-xs font-semibold">
                           ใช้งานอยู่ (Active)
                         </span>
@@ -240,15 +302,31 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                         </span>
                       )}
                     </div>
-                    {activeKey && (
+                    {!isSignedIn ? (
+                      <div className="text-xs text-rose-700 mt-1">
+                        ทุกฟีเจอร์ที่ใช้งาน AI และโหมด BYOK จำเป็นต้องเข้าสู่ระบบด้วยบัญชี Google ก่อน เพื่อความปลอดภัยและนับสิทธิ์การใช้งานประจำวันได้อย่างถูกต้อง
+                      </div>
+                    ) : activeKey ? (
                       <div className="text-xs text-slate-500 font-mono mt-0.5">
                         คีย์ที่กำลังใช้งาน: {maskKey(activeKey)}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
-                {activeKey && (
+                {!isSignedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      openLoginModal();
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors cursor-pointer"
+                  >
+                    <LogIn size={14} />
+                    เข้าสู่ระบบด้วย Google
+                  </button>
+                ) : activeKey ? (
                   <button
                     onClick={handleRemoveKey}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-red-600 hover:bg-red-100/60 border border-red-200 transition-colors"
@@ -257,11 +335,11 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                     <Trash2 size={14} />
                     ยกเลิกใช้คีย์นี้
                   </button>
-                )}
+                ) : null}
               </div>
 
               {/* Active Tier Benefits Banner */}
-              {activeKey && (
+              {isSignedIn && activeKey && (
                 <div className="mt-3 pt-3 border-t border-emerald-200/60 text-xs text-emerald-900 flex items-center gap-2">
                   <Sparkles size={16} className="text-emerald-600 shrink-0" />
                   <span>
@@ -272,7 +350,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
             </div>
 
             {/* Cloud Sync Status Banner */}
-            {auth.currentUser ? (
+            {isSignedIn && auth.currentUser ? (
               <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-center justify-between text-xs text-blue-900 shadow-2xs">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
@@ -296,9 +374,11 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="p-3 bg-slate-100/90 border border-slate-200 rounded-2xl flex items-center gap-2.5 text-xs text-slate-600">
-                <Cloud size={18} className="text-slate-400 shrink-0" />
-                <span>💡 เข้าสู่ระบบด้วย Google เพื่อบันทึกคีย์นี้ข้ามอุปกรณ์อัตโนมัติ</span>
+              <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-center justify-between gap-2.5 text-xs text-amber-900">
+                <div className="flex items-center gap-2.5">
+                  <Lock size={16} className="text-amber-600 shrink-0" />
+                  <span>กรุณาเข้าสู่ระบบด้วยบัญชี Google เพื่อปลดล็อกการใส่ API Key และซิงค์สิทธิ์ฟรีรายวันของคุณ</span>
+                </div>
               </div>
             )}
 
@@ -457,13 +537,18 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   type={showPassword ? 'text' : 'password'}
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="แตะปุ่มวางคีย์ หรือพิมพ์ AIzaSy..."
+                  disabled={!isSignedIn}
+                  placeholder={isSignedIn ? "แตะปุ่มวางคีย์ หรือพิมพ์ AIzaSy..." : "เข้าสู่ระบบด้วย Google ก่อนจึงจะใส่ API Key ได้"}
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck="false"
                   inputMode="text"
-                  className="w-full pl-4 pr-32 py-3.5 bg-slate-50 border border-slate-300 rounded-2xl text-slate-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner"
+                  className={`w-full pl-4 pr-32 py-3.5 border rounded-2xl text-sm font-mono transition-all shadow-inner ${
+                    !isSignedIn
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-300 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white'
+                  }`}
                 />
 
                 <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
@@ -471,13 +556,15 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   <button
                     type="button"
                     onClick={handlePasteFromClipboard}
-                    disabled={isPasting}
+                    disabled={!isSignedIn || isPasting}
                     className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs ${
-                      pasteSuccess
+                      !isSignedIn
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : pasteSuccess
                         ? 'bg-emerald-600 text-white'
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'
                     }`}
-                    title="วางคีย์ที่ก็อปปี้ไว้ทันที"
+                    title={isSignedIn ? "วางคีย์ที่ก็อปปี้ไว้ทันที" : "กรุณาเข้าสู่ระบบก่อน"}
                   >
                     {pasteSuccess ? (
                       <>
@@ -495,8 +582,9 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   {/* Show/Hide Toggle */}
                   <button
                     type="button"
+                    disabled={!isSignedIn}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                    className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg disabled:opacity-40"
                     title={showPassword ? 'ซ่อนคีย์' : 'แสดงคีย์'}
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -505,28 +593,30 @@ export const ByokModal: React.FC<ByokModalProps> = ({
               </div>
 
               {/* Prominent Wide Paste Button for Mobile/Touch & Fallback */}
-              <button
-                type="button"
-                onClick={handlePasteFromClipboard}
-                disabled={isPasting}
-                className={`w-full py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
-                  pasteSuccess
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                    : 'bg-indigo-50/70 hover:bg-indigo-100/90 active:bg-indigo-200 border-indigo-200 text-indigo-700'
-                }`}
-              >
-                {pasteSuccess ? (
-                  <>
-                    <CheckCircle2 size={16} className="text-emerald-600" />
-                    <span className="font-bold">วาง API Key จากคลิปบอร์ดเรียบร้อยแล้ว!</span>
-                  </>
-                ) : (
-                  <>
-                    <Clipboard size={16} className="text-indigo-600" />
-                    <span>📋 แตะที่นี่เพื่อวางคีย์ที่ก็อปปี้ไว้ (Paste from Clipboard)</span>
-                  </>
-                )}
-              </button>
+              {isSignedIn && (
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  disabled={isPasting}
+                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                    pasteSuccess
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-indigo-50/70 hover:bg-indigo-100/90 active:bg-indigo-200 border-indigo-200 text-indigo-700'
+                  }`}
+                >
+                  {pasteSuccess ? (
+                    <>
+                      <CheckCircle2 size={16} className="text-emerald-600" />
+                      <span className="font-bold">วาง API Key จากคลิปบอร์ดเรียบร้อยแล้ว!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard size={16} className="text-indigo-600" />
+                      <span>📋 แตะที่นี่เพื่อวางคีย์ที่ก็อปปี้ไว้ (Paste from Clipboard)</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* Validation Result Messages */}
               {validationResult.status === 'success' && (
@@ -550,27 +640,41 @@ export const ByokModal: React.FC<ByokModalProps> = ({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={handleValidateAndSave}
-                  disabled={isValidating || !apiKeyInput.trim()}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl font-bold text-sm shadow-md transition-all ${
-                    isValidating || !apiKeyInput.trim()
-                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white hover:scale-[1.01]'
-                  }`}
-                >
-                  {isValidating ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      <span>กำลังทดสอบคีย์กับ Google AI Studio...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Check size={18} />
-                      <span>ตรวจสอบและบันทึกคีย์ (Validate & Save)</span>
-                    </>
-                  )}
-                </button>
+                {!isSignedIn ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      openLoginModal();
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl font-bold text-sm shadow-md transition-all bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white hover:scale-[1.01] cursor-pointer"
+                  >
+                    <LogIn size={18} />
+                    <span>เข้าสู่ระบบด้วย Google เพื่อเริ่มตั้งค่า BYOK</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleValidateAndSave}
+                    disabled={isValidating || !apiKeyInput.trim()}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl font-bold text-sm shadow-md transition-all ${
+                      isValidating || !apiKeyInput.trim()
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white hover:scale-[1.01]'
+                    }`}
+                  >
+                    {isValidating ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span>กำลังทดสอบคีย์กับ Google AI Studio...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={18} />
+                        <span>ตรวจสอบและบันทึกคีย์ (Validate & Save)</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -580,7 +684,7 @@ export const ByokModal: React.FC<ByokModalProps> = ({
               <div className="space-y-0.5">
                 <div className="font-bold text-amber-900">ทำครั้งเดียวใช้ได้ตลอดไป คุ้มสุดทุกแพ็กเกจ:</div>
                 <div className="text-slate-600 leading-relaxed">
-                  API Key นี้จะผูกกับบัญชีของคุณตลอดไป ใช้คอลเสียง & วิดีโอคอล AI <strong>ฟรีไม่อั้น</strong> พร้อมโควตาฟรีประจำวันสำหรับ <strong>สอบศัพท์ (7 ครั้ง/วัน)</strong>, <strong>ตรวจข้อสอบจำลองสอบ (3 ครั้ง/วัน)</strong>, <strong>คาราโอเกะแปลเพลงใหม่ (3 เพลง/วัน)</strong> และ <strong>ใส่ซับวิดีโอ AI (1 คลิป/วัน ความยาวไม่เกิน 5 นาที)</strong> โดยเมื่อใช้ครบสิทธิ์ของวันสามารถเลือกใช้เครดิตในแอปทำต่อได้ทันที
+                  API Key นี้จะผูกกับบัญชีของคุณตลอดไป ใช้คอลเสียง & วิดีโอคอล AI และสรุปความจำหลังคอลติวเตอร์ <strong>ฟรีไม่อั้น</strong> พร้อมโควตาฟรีประจำวันสำหรับ <strong>สอบศัพท์ ({BYOK_DAILY_LIMITS.vocab_exam} ครั้ง/วัน)</strong>, <strong>วิเคราะห์เสียงฝึกพูดตามประโยค ({BYOK_DAILY_LIMITS.shadowing_analyze} ครั้ง/วัน)</strong>, <strong>ตรวจข้อสอบ AI ({BYOK_DAILY_LIMITS.mock_test} ครั้ง/วัน · Reading/Listening ฟรีไม่จำกัด)</strong>, <strong>แปลเพลงใหม่คาราโอเกะ ({BYOK_DAILY_LIMITS.karaoke_translate} เพลง/วัน)</strong>, <strong>อธิบายคำศัพท์ในเพลงด้วย AI ({BYOK_DAILY_LIMITS.karaoke_explain} คำ/วัน)</strong>, <strong>วิเคราะห์บทความส่วนตัว ({BYOK_DAILY_LIMITS.reading_analyze} บทความ/วัน)</strong>, <strong>Roleplay สร้างด่านเอง ({BYOK_DAILY_LIMITS.roleplay_custom} ด่าน/วัน) & สรุปคะแนน AI ({BYOK_DAILY_LIMITS.roleplay_report} ครั้ง/วัน)</strong> และ <strong>ใส่ซับวิดีโอ AI ({BYOK_DAILY_LIMITS.video_subtitle} คลิป/วัน ≤5 นาที)</strong>
                 </div>
               </div>
             </div>
@@ -627,13 +731,15 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </div>
 
                   <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5 text-blue-700 font-bold text-xs">
                         <FileSignature size={14} className="shrink-0" />
                         <span>ตรวจสอบคำศัพท์ (Vocab)</span>
                       </div>
                       <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.vocab_exam - dailyUsage.vocab_exam)}/{BYOK_DAILY_LIMITS.vocab_exam} วันนี้
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.vocab_exam - dailyUsage.vocab_exam)}/${BYOK_DAILY_LIMITS.vocab_exam} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
                       </span>
                     </div>
                     <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.vocab_exam} ครั้ง / วัน</div>
@@ -641,13 +747,15 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </div>
 
                   <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5 text-purple-700 font-bold text-xs">
                         <Clock size={14} className="shrink-0" />
                         <span>ตรวจข้อสอบจำลองสอบ</span>
                       </div>
                       <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
-                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.mock_test - dailyUsage.mock_test)}/{BYOK_DAILY_LIMITS.mock_test} วันนี้
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.mock_test - dailyUsage.mock_test)}/${BYOK_DAILY_LIMITS.mock_test} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
                       </span>
                     </div>
                     <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.mock_test} ครั้ง / วัน</div>
@@ -655,33 +763,103 @@ export const ByokModal: React.FC<ByokModalProps> = ({
                   </div>
 
                   <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-1">
                       <div className="flex items-center gap-1.5 text-rose-700 font-bold text-xs">
                         <Music size={14} className="shrink-0" />
                         <span>คาราโอเกะ แปลเพลงใหม่</span>
                       </div>
                       <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md">
-                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.karaoke_translate - dailyUsage.karaoke_translate)}/{BYOK_DAILY_LIMITS.karaoke_translate} วันนี้
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.karaoke_translate - dailyUsage.karaoke_translate)}/${BYOK_DAILY_LIMITS.karaoke_translate} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
                       </span>
                     </div>
                     <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.karaoke_translate} เพลงใหม่ / วัน</div>
                     <div className="text-[11px] text-slate-500">คลัง 100 เพลง & เพลงชุมชนฟรีไม่อั้นทุกคน</div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1 sm:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-teal-700 font-bold text-xs">
-                        <Captions size={14} className="shrink-0" />
-                        <span>ใส่ซับไตเติ้ลวิดีโอด้วย AI (Gemini AI)</span>
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-amber-700 font-bold text-xs">
+                        <BookOpen size={14} className="shrink-0" />
+                        <span>วิเคราะห์บทความส่วนตัว (AI)</span>
                       </div>
-                      <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
-                        เหลือ {Math.max(0, BYOK_DAILY_LIMITS.video_subtitle - (dailyUsage.video_subtitle || 0))}/{BYOK_DAILY_LIMITS.video_subtitle} วันนี้
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.reading_analyze - (dailyUsage.reading_analyze || 0))}/${BYOK_DAILY_LIMITS.reading_analyze} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
                       </span>
                     </div>
-                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.video_subtitle} คลิป / วัน (ความยาวไม่เกิน 5 นาที)</div>
-                    <div className="text-[11px] text-slate-500">
-                      คลิปยาวกว่า 5 นาที หรือใช้ครบสิทธิ์แล้ว เลือกใช้ 5 เครดิต หรือโหมดฟรีบนเครื่อง (0 เครดิต ไม่จำกัดความยาว) ได้ทันที
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.reading_analyze} บทความ / วัน</div>
+                    <div className="text-[11px] text-slate-500">วางบทความเองให้ AI แปล & สร้างคำถาม (คลังเรื่องสั้นฟรีไม่อั้น)</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-teal-700 font-bold text-xs">
+                        <Captions size={14} className="shrink-0" />
+                        <span>ใส่ซับวิดีโอด้วย AI</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md">
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.video_subtitle - (dailyUsage.video_subtitle || 0))}/${BYOK_DAILY_LIMITS.video_subtitle} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
+                      </span>
                     </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.video_subtitle} คลิป / วัน (≤5 นาที)</div>
+                    <div className="text-[11px] text-slate-500">
+                      เกิน 5 นาที หรือครบสิทธิ์ ใช้ 5 เครดิต หรือโหมดฟรีบนเครื่อง (0 เครดิต)
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-pink-700 font-bold text-xs">
+                        <Sparkles size={14} className="shrink-0" />
+                        <span>อธิบายคำศัพท์ในเพลง (AI)</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-md">
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.karaoke_explain - (dailyUsage.karaoke_explain || 0))}/${BYOK_DAILY_LIMITS.karaoke_explain} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.karaoke_explain} คำ / วัน</div>
+                    <div className="text-[11px] text-slate-500">แตะคำนอกพจนานุกรมในคาราโอเกะ (คำในพจนานุกรมแอปฟรีไม่อั้น)</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-violet-700 font-bold text-xs">
+                        <Zap size={14} className="shrink-0" />
+                        <span>Roleplay สร้างด่าน & สรุปคะแนน AI</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-md">
+                        {isSignedIn
+                          ? `ด่าน ${Math.max(0, BYOK_DAILY_LIMITS.roleplay_custom - (dailyUsage.roleplay_custom || 0))}/${BYOK_DAILY_LIMITS.roleplay_custom} • สรุป ${Math.max(0, BYOK_DAILY_LIMITS.roleplay_report - (dailyUsage.roleplay_report || 0))}/${BYOK_DAILY_LIMITS.roleplay_report}`
+                          : 'ต้องเข้าสู่ระบบ'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">
+                      สร้างด่าน {BYOK_DAILY_LIMITS.roleplay_custom} • สรุปคะแนน {BYOK_DAILY_LIMITS.roleplay_report} / วัน
+                    </div>
+                    <div className="text-[11px] text-slate-500">คอล Roleplay & สรุปความจำหลังคอลติวเตอร์ฟรีไม่อั้น</div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/95 border border-emerald-200/80 space-y-1 sm:col-span-2">
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-cyan-700 font-bold text-xs">
+                        <Sparkles size={14} className="shrink-0" />
+                        <span>วิเคราะห์เสียงฝึกพูดตามประโยคในคลังศัพท์ (Shadowing AI)</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-md">
+                        {isSignedIn
+                          ? `เหลือ ${Math.max(0, BYOK_DAILY_LIMITS.shadowing_analyze - (dailyUsage.shadowing_analyze || 0))}/${BYOK_DAILY_LIMITS.shadowing_analyze} วันนี้`
+                          : 'ต้องเข้าสู่ระบบ'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-black text-emerald-700">ฟรี {BYOK_DAILY_LIMITS.shadowing_analyze} ครั้ง / วัน</div>
+                    <div className="text-[11px] text-slate-500">AI ฟังเสียงพูดจริง ตรวจคำต่อคำและแนะนำการออกเสียง/วรรณยุกต์ (อัดฟังเทียบต้นฉบับฟรีไม่อั้นทุกคน)</div>
                   </div>
                 </div>
 
